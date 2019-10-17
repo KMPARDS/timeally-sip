@@ -59,16 +59,17 @@ if(shouldBuild) {
   fs.removeSync(buildFolderPath);
   fs.ensureDirSync(buildFolderPath);
 
+  let i = 0;
   for (let contractFile in output.contracts) {
-    let i = 0;
     for(let key in output.contracts[contractFile]) {
       //console.log(key, Object.keys(output.contracts[contractFile][key]));
       fs.outputJsonSync(
-        path.resolve(buildFolderPath, `${key}_${i}.json`),
+        path.resolve(buildFolderPath, `${contractFile.split('.')[0]}_${key}.json`),
         output.contracts[contractFile][key]
       );
-      i++;
+
     }
+    i++;
   }
   console.log('Build finished successfully!\n');
 } else {

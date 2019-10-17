@@ -13,8 +13,8 @@ const ganache = require('ganache-cli');
 const provider = new ethers.providers.Web3Provider(ganache.provider({ gasLimit: 8000000 }));
 
 /// @dev importing build file
-const esJson = require('../build/EraswapToken_7.json');
-const timeallySIPJSON = require('../build/TimeAllySIP_2.json');
+const esJson = require('../build/Eraswap_EraswapToken.json');
+const timeallySIPJSON = require('../build/TimeAllySIP_TimeAllySIP.json');
 
 /// @dev initialize global variables
 let accounts, esInstance, timeallySIPInstance;
@@ -49,13 +49,13 @@ describe('Eraswap Setup', () => {
 });
 
 /// @dev this is another test case collection
-describe('TimeAlly SIP Contract', () => {
+describe('TimeAllySIP Contract', () => {
 
   /// @dev describe under another describe is a sub test case collection
-  describe('TimeAlly SIP Setup', async() => {
+  describe('TimeAllySIP Setup', async() => {
 
     /// @dev this is first test case of this collection
-    it('deploys TimeAlly SIP contract from first account with Eraswap contract address', async() => {
+    it('deploys TimeAllySIP contract from first account with Eraswap contract address', async() => {
 
       /// @dev you create a contract factory for deploying contract. Refer to ethers.js documentation at https://docs.ethers.io/ethers.js/html/
       const TimeAllySIPContractFactory = new ethers.ContractFactory(
@@ -67,28 +67,76 @@ describe('TimeAlly SIP Contract', () => {
 
       assert.ok(timeallySIPInstance.address, 'conract address should be present');
     });
+
+    it('set a plan of TimeAllySIP', async() => {
+      const args = {
+        minimumCommitmentAmount: ethers.utils.parseEther('500'),
+        accumulationPeriodMonths: 12,
+        benefitPeriodYears: 9,
+        gracePeriodSeconds: 864000, /// 10 days
+        onTimeBenefitFactor: 200,
+        graceBenefitFactor: 180,
+        topupBenefitFactor: 100
+      }
+      const tx = await timeallySIPInstance.functions.createSIPPlan(
+        ...Object.values(args)
+      );
+      await tx.wait();
+
+      const sipPlan = await timeallySIPInstance.functions.sipPlans(0);
+
+      assert.ok(
+        sipPlan.minimumCommitmentAmount.eq(args.minimumCommitmentAmount),
+        'minimumCommitmentAmount should be set properly'
+      );
+      assert.ok(
+        sipPlan.accumulationPeriodMonths.eq(args.accumulationPeriodMonths),
+        'accumulationPeriodMonths should be set properly'
+      );
+      assert.ok(
+        sipPlan.benefitPeriodYears.eq(args.benefitPeriodYears),
+        'benefitPeriodYears should be set properly'
+      );
+      assert.ok(
+        sipPlan.gracePeriodSeconds.eq(args.gracePeriodSeconds),
+        'gracePeriodSeconds should be set properly'
+      );
+      assert.ok(
+        sipPlan.onTimeBenefitFactor.eq(args.onTimeBenefitFactor),
+        'onTimeBenefitFactor should be set properly'
+      );
+      assert.ok(
+        sipPlan.graceBenefitFactor.eq(args.graceBenefitFactor),
+        'graceBenefitFactor should be set properly'
+      );
+      assert.ok(
+        sipPlan.topupBenefitFactor.eq(args.topupBenefitFactor),
+        'topupBenefitFactor should be set properly'
+      );
+
+    });
   });
 
-//   describe('Simple Storage Functionality', async() => {
-//
-//     /// @dev this is first test case of this collection
-//     it('should change storage value to a new value', async() => {
-//
-//       /// @dev you sign and submit a transaction to local blockchain (ganache) initialized on line 10.
-//       const tx = await simpleStorageInstance.functions.setValue('Zemse');
-//
-//       /// @dev you can wait for transaction to confirm
-//       await tx.wait();
-//
-//       /// @dev now get the value at storage
-//       const currentValue = await simpleStorageInstance.functions.getValue();
-//
-//       /// @dev then comparing with expectation value
-//       assert.equal(
-//         currentValue,
-//         'Zemse',
-//         'value set must be able to get'
-//       );
-//     });
-//   });
+  // describe('TimeAllySIP Functionality', async() => {
+  //
+  //   /// @dev this is first test case of this collection
+  //   it('should change storage value to a new value', async() => {
+  //
+  //     /// @dev you sign and submit a transaction to local blockchain (ganache) initialized on line 10.
+  //     const tx = await simpleStorageInstance.functions.setValue('Zemse');
+  //
+  //     /// @dev you can wait for transaction to confirm
+  //     await tx.wait();
+  //
+  //     /// @dev now get the value at storage
+  //     const currentValue = await simpleStorageInstance.functions.getValue();
+  //
+  //     /// @dev then comparing with expectation value
+  //     assert.equal(
+  //       currentValue,
+  //       'Zemse',
+  //       'value set must be able to get'
+  //     );
+  //   });
+  // });
 });
