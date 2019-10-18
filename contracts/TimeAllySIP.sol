@@ -3,7 +3,7 @@ pragma solidity 0.5.12;
 contract TimeAllySIP {
   struct SIPPlan {
     bool isPlanActive;
-    uint256 minimumCommitmentAmount;
+    uint256 minimumMonthlyCommitmentAmount; /// @dev minimum monthlyCommitmentAmount
     uint256 accumulationPeriodMonths; /// @dev 12 months
     uint256 benefitPeriodYears; /// @dev 9 years
     uint256 gracePeriodSeconds;
@@ -15,13 +15,13 @@ contract TimeAllySIP {
   struct SIP {
     uint256 planId;
     uint256 stakingTimestamp;
-    uint256 commitmentAmount;
+    uint256 monthlyCommitmentAmount;
     uint256 ctcAmount; /// @dev this amount is deposited by company for benefits
     uint256 pendingBenefitAmount; /// @dev increased everytime staker deposits
     uint256 powerBoosterAmount;
     uint256[] accumulationAmount;
   }
-
+  
   address public owner;
   ERC20 public token;
 
@@ -43,7 +43,7 @@ contract TimeAllySIP {
   }
 
   function createSIPPlan(
-    uint256 _minimumCommitmentAmount,
+    uint256 _minimumMonthlyCommitmentAmount,
     uint256 _accumulationPeriodMonths,
     uint256 _benefitPeriodYears,
     uint256 _gracePeriodSeconds,
@@ -54,7 +54,7 @@ contract TimeAllySIP {
     sipPlans.push(SIPPlan({
       isPlanActive: true,
       accumulationPeriodMonths: _accumulationPeriodMonths,
-      minimumCommitmentAmount: _minimumCommitmentAmount,
+      minimumMonthlyCommitmentAmount: _minimumMonthlyCommitmentAmount,
       benefitPeriodYears: _benefitPeriodYears,
       gracePeriodSeconds: _gracePeriodSeconds,
       onTimeBenefitFactor: _onTimeBenefitFactor,
@@ -63,7 +63,16 @@ contract TimeAllySIP {
     }));
   }
 
-
+  function newSIP(
+    uint256 _planId,
+    uint256 _monthlyCommitmentAmount
+  ) public {
+    require(
+      _monthlyCommitmentAmount >= sipPlans[_planId].minimumMonthlyCommitmentAmount
+      , 'amount should be atleast minimum'
+    );
+    require(token.transferFrom(msg.sender, address(this), _monthlyCommitmentAmount));
+  }
 }
 
 /// @dev For interface requirement
