@@ -115,19 +115,18 @@ contract TimeAllySIP {
     // uint256 _sipId = sips[msg.sender].length - 1;
     // sips[msg.sender][_sipId].monthlyBenefitAmount[1] = _monthlyCommitmentAmount;
 
-    emit NewSIP(msg.sender, sips[msg.sender] - 1, _monthlyCommitmentAmount);
+    emit NewSIP(msg.sender, sips[msg.sender].length - 1, _monthlyCommitmentAmount);
   }
 
-  function _getDepositStatus(address _staker, uint256 _sipId, uint256 _monthNumber) private returns (uint256) {
-    uint256 sip = sips[_staker][_sipId];
+  function _getDepositStatus(SIP storage _sip, uint256 _monthNumber) private view returns (uint256) {
 
     /// @dev not using safemath to save gas, function is private and used
     /// in monthlyDeposit where _monthNumber is bounded.
-    uint256 onTimeTimestamp = sip.stakingTimestamp + earthSecondsInMonth * _monthNumber;
+    uint256 onTimeTimestamp = _sip.stakingTimestamp + earthSecondsInMonth * _monthNumber;
 
     if(onTimeTimestamp >= now) {
       return 1; /// @dev means deposit is ontime
-    } else if(onTimeTimestamp >= now + sip.gracePeriodSeconds) {
+    } else if(onTimeTimestamp >= now + sipPlans[ _sip.planId ].gracePeriodSeconds) {
       return 2; /// @dev means deposit is in grace period
     } else {
       return 3; /// @dev means even grace period is elapsed
@@ -156,7 +155,7 @@ contract TimeAllySIP {
 
     require(token.transferFrom(msg.sender, address(this), _depositAmount));
 
-    uint256 _depositStatus = _getDepositStatus(msg.sender, _sipId, _monthNumber);
+    uint256 _depositStatus = _getDepositStatus(_sip, _monthNumber);
     require(_depositStatus < 3, 'grace period elapsed');
 
     /// @dev _yearlyBenefitAmount is benefit queued to be withdrawn after accumulation
