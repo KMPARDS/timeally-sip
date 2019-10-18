@@ -42,7 +42,14 @@ console.log('Done');
 let shouldBuild = true;
 
 if (output.errors) {
-  console.error(output.errors);
+  // console.error(output.errors);
+  for(error of output.errors) {
+    console.log('-'.repeat(process.stdout.columns));
+    console.group(error.severity.toUpperCase());
+    console.log(error.formattedMessage);
+    console.groupEnd();
+  }
+  if(Object.values(output.errors).length) console.log('-'.repeat(process.stdout.columns));
   // throw '\nError in compilation please check the contract\n';
   for(error of output.errors) {
     if(error.severity === 'error') {
