@@ -3,19 +3,9 @@ pragma solidity 0.5.12;
 import './SafeMath.sol';
 
 /**
-Month number:
-0
-1
-2
-3
-4
-5
-6
-7
-8
-9
-10
-11
+
+remove status from sip struct
+
 **/
 
 contract TimeAllySIP {
@@ -37,8 +27,8 @@ contract TimeAllySIP {
     uint256 status; /// @dev 1 => acc period, 2 => withdraw period
     uint256 stakingTimestamp;
     uint256 monthlyCommitmentAmount;
-    uint256 ctcAmount; /// @dev this amount is deposited by company for benefits
-    uint256 pendingBenefitAmount; /// @dev increased everytime staker deposits
+    // uint256 ctcAmount; /// @dev this amount is deposited by company for benefits
+    // uint256 pendingBenefitAmount; /// @dev increased everytime staker deposits
     uint256 powerBoosterAmount; /// @dev increased everytime staker deposits
     uint256 lastWithdrawlMonthId;
     mapping(uint256 => uint256) monthlyBenefitAmount; /// @dev benefits given in yearly interval
@@ -49,6 +39,9 @@ contract TimeAllySIP {
 
   /// @dev 1 Year = 365.242 days for taking care of leap years
   uint256 public EARTH_SECONDS_IN_MONTH = 2629744;
+  uint256 public pendingBenefitAmountOfAllStakers;
+  uint256 public fundsDeposit; /// @dev deposited by company
+
 
   SIPPlan[] public sipPlans;
 
@@ -63,8 +56,9 @@ contract TimeAllySIP {
   event NewDeposit (
     address indexed _staker,
     uint256 _sipId,
+    uint256 _monthId,
     uint256 _depositAmount,
-    uint256 _yearlyBenefitAmount
+    uint256 _benefitQueued
   );
 
   event BenefitWithdrawl (
@@ -72,6 +66,14 @@ contract TimeAllySIP {
     uint256 indexed _sipId,
     uint256 _fromMonthId,
     uint256 _toMonthId,
+    uint256 _withdrawlAmount
+  );
+
+  event FundsDeposited (
+    uint256 _depositAmount
+  );
+
+  event FundsWithdrawn (
     uint256 _withdrawlAmount
   );
 
@@ -114,6 +116,25 @@ contract TimeAllySIP {
     }));
   }
 
+  function addFunds(uint256 _depositAmount) public {
+    require(token.transferFrom(msg.sender, address(this), _depositAmount));
+    fundsDeposit = fundsDeposit.add(_depositAmount);
+
+    emit FundsDeposited(_depositAmount);
+  }
+
+  function withdrawFunds(uint256 _withdrawlAmount) public onlyOwner {
+    require(
+      fundsDeposit.sub(pendingBenefitAmountOfAllStakers) >= _withdrawlAmount
+      , 'cannot withdraw excess funds'
+    );
+
+    fundsDeposit = fundsDeposit.sub(_withdrawlAmount);
+    token.transfer(msg.sender, _withdrawlAmount);
+
+    emit FundsWithdrawn(_withdrawlAmount);
+  }
+
   function newSIP(
     uint256 _planId,
     uint256 _monthlyCommitmentAmount
@@ -141,17 +162,32 @@ contract TimeAllySIP {
       status: 1,
       stakingTimestamp: now,
       monthlyCommitmentAmount: _monthlyCommitmentAmount,
-      ctcAmount: 0,
-      pendingBenefitAmount: _monthlyCommitmentAmount.mul(sipPlans[_planId].benefitPeriodYears),
+      // ctcAmount: 0,
+      // pendingBenefitAmount: _monthlyCommitmentAmount.mul(sipPlans[_planId].benefitPeriodYears),
       powerBoosterAmount: _monthlyCommitmentAmount,
-      lastWithdrawlMonthId: 0 /// @dev withdrawl monthId starts from 1, monthId is 0
+      lastWithdrawlMonthId: 0 /// @dev withdrawl monthId starts from 1
     }));
+
+    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
+      _monthlyCommitmentAmount.mul(sipPlans[_planId].benefitPeriodYears)
+    );
 
     /// @dev commenting this setep to save gas
     uint256 _sipId = sips[msg.sender].length - 1;
-    sips[msg.sender][_sipId].monthlyBenefitAmount[0] = _monthlyCommitmentAmount;
+    sips[msg.sender][_sipId].monthlyBenefitAmount[1] = _monthlyCommitmentAmount.mul(
+      sipPlans[ _planId ].onTimeBenefitFactor
+    ).div(1000);
+
+    uint256 _benefitQueued = sips[msg.sender][_sipId].monthlyBenefitAmount[1].mul(
+      sipPlans[ _planId ].benefitPeriodYears
+    );
+
+    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
+      _benefitQueued
+    );
 
     emit NewSIP(msg.sender, sips[msg.sender].length - 1, _monthlyCommitmentAmount);
+    emit NewDeposit(msg.sender, _sipId, 1, _monthlyCommitmentAmount, _benefitQueued);
   }
 
   function getDepositStatus(address _userAddress, uint256 _sipId, uint256 _monthId) public view returns (uint256) {
@@ -181,8 +217,8 @@ contract TimeAllySIP {
       , 'deposit cannot be less than commitment'
     );
     require(
-      _monthId >= 0 && _monthId
-        < sipPlans[ _sip.planId ].accumulationPeriodMonths
+      _monthId >= 1 && _monthId
+        <= sipPlans[ _sip.planId ].accumulationPeriodMonths
       , 'invalid month'
     );
     require(
@@ -217,40 +253,46 @@ contract TimeAllySIP {
     }
 
     _sip.powerBoosterAmount = _sip.powerBoosterAmount.add(_depositAmount);
-    _sip.monthlyBenefitAmount[_monthId%12] = _yearlyBenefitAmount;
-    _sip.pendingBenefitAmount = _sip.pendingBenefitAmount.add(
-      _yearlyBenefitAmount.mul(sipPlans[ _sip.planId ].benefitPeriodYears)
+    uint256 _monthIdModulus = _monthId%12;
+    if(_monthIdModulus == 0) _monthIdModulus = 12;
+    _sip.monthlyBenefitAmount[_monthIdModulus] = _yearlyBenefitAmount;
+
+    uint256 _benefitQueued = _yearlyBenefitAmount.mul(sipPlans[ _sip.planId ].benefitPeriodYears);
+    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
+      _benefitQueued
     );
 
-    emit NewDeposit(msg.sender, _sipId, _depositAmount, _yearlyBenefitAmount);
+    emit NewDeposit(msg.sender, _sipId, _monthId, _depositAmount, _benefitQueued);
   }
 
   function getPendingWithdrawlAmount(
     address _userAddress,
     uint256 _sipId,
-    uint256 _withdrawlmonthId
+    uint256 _withdrawlMonthId
   ) public view returns (uint256) {
     SIP storage _sip = sips[_userAddress][_sipId];
     uint256 withdrawlAllowedTimestamp
       = _sip.stakingTimestamp
         + EARTH_SECONDS_IN_MONTH * (
           sipPlans[ _sip.planId ].accumulationPeriodMonths
-            + _withdrawlmonthId
+            + _withdrawlMonthId - 1
         );
     require(
-      _withdrawlmonthId > _sip.lastWithdrawlMonthId
+      _withdrawlMonthId > _sip.lastWithdrawlMonthId
       , 'cannot withdraw again'
     );
     require(
-      _withdrawlmonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
+      _withdrawlMonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
       , 'withdraw month exceeded'
     );
     require(now >= withdrawlAllowedTimestamp
       , 'cannot withdraw early'
     );
     uint256 _benefitToGive;
-    for(uint256 _i = _sip.lastWithdrawlMonthId + 1; _i <= _withdrawlmonthId; _i++) {
-      _benefitToGive = _benefitToGive.add(_sip.monthlyBenefitAmount[_i%12]);
+    for(uint256 _i = _sip.lastWithdrawlMonthId + 1; _i <= _withdrawlMonthId; _i++) {
+      uint256 _monthIdModulus = _i%12;
+      if(_monthIdModulus == 0) _monthIdModulus = 12;
+      _benefitToGive = _benefitToGive.add(_sip.monthlyBenefitAmount[_monthIdModulus]);
     }
     return _benefitToGive;
   }
@@ -259,20 +301,23 @@ contract TimeAllySIP {
     uint256 _sipId,
     uint256 _withdrawlmonthId
   ) public {
-    SIP storage _sip = sips[msg.sender][_sipId];
-    uint256 _lastWithdrawlMonthId = _sip.lastWithdrawlMonthId;
-    require(_sip.status == 2, 'not in withdraw mode');
+    /// @dev require statements are in this function getPendingWithdrawlAmount
     uint256 _withdrawlAmount = getPendingWithdrawlAmount(
       msg.sender,
       _sipId,
       _withdrawlmonthId
     );
 
+    SIP storage _sip = sips[msg.sender][_sipId];
+    uint256 _lastWithdrawlMonthId = _sip.lastWithdrawlMonthId;
+
+    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.sub(_withdrawlAmount);
+    fundsDeposit = fundsDeposit.sub(_withdrawlAmount);
     /// @dev marking that user has withdrawn upto _withdrawlmonthId month
     _sip.lastWithdrawlMonthId = _withdrawlmonthId;
 
     /// @dev transfering tokens to the user wallet address
-    token.transfer(msg.sender, _sipId);
+    token.transfer(msg.sender, _withdrawlAmount);
 
     // _lastWithdrawlMonth
     emit BenefitWithdrawl(

@@ -43,14 +43,14 @@ const sipPlans = [
 let diff = 0;
 const safeDeposit = (seconds, add = 0) => {
   diff += add;
-  return seconds - 1 - diff + add;
+  return seconds - diff + add;
 };
 const depositTestCases = [
-  [
-    safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
-    1
-  ],
+  // [
+  //   safeDeposit(EARTH_SECONDS_IN_MONTH),
+  //   '600',
+  //   1
+  // ],
   [
     0,
     '500',
@@ -58,60 +58,60 @@ const depositTestCases = [
     'fail'
   ],
   [
-    safeDeposit(EARTH_SECONDS_IN_MONTH, 1000),
-    '600',
+    safeDeposit(EARTH_SECONDS_IN_MONTH),
+    '500',
     2
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '1000',
+    '500',
     3
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '1000',
+    '500',
     4
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     5
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     6
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     7
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     8
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     9
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     10
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '600',
+    '500',
     11
   ],
-  // [
-  //   safeDeposit(EARTH_SECONDS_IN_MONTH),
-  //   '600',
-  //   12
-  // ],
+  [
+    safeDeposit(EARTH_SECONDS_IN_MONTH),
+    '500',
+    12
+  ],
   // [
   //   safeDeposit(EARTH_SECONDS_IN_MONTH),
   //   '600',
@@ -281,8 +281,8 @@ describe('TimeAllySIP Contract', () => {
 
     describe('Continue TimeAlly SIP deposits', async() => {
       depositTestCases.forEach(entry => {
-        const [increaseSeconds, amountInES, monthNumber, fail] = entry;
-        describe(`Deposit of Month ${monthNumber}`, async() => {
+        const [increaseSeconds, amountInES, monthId, fail] = entry;
+        describe(`Deposit of Month ${monthId}`, async() => {
           if(increaseSeconds) {
             it(`time travels to future by ${increaseSeconds} seconds`, async() => {
               evm_increasedTime += increaseSeconds;
@@ -301,43 +301,91 @@ describe('TimeAllySIP Contract', () => {
             assert.ok(allowanceToSip.eq(ethers.utils.parseEther(amountInES)), 'allowance should be set');
           });
 
-          it(`depositing ${amountInES} ES in SIP month ${monthNumber}${fail ? ` should give error` : ''}`, async() => {
+          it(`depositing ${amountInES} ES in SIP month ${monthId}${fail ? ` should give error` : ''}`, async() => {
             try {
               const depositStatus = await timeallySIPInstance[1].functions.getDepositStatus(
-                accounts[1], 0, monthNumber
+                accounts[1], 0, monthId
               );
               const actualDepositAmountBN = ethers.utils.parseEther(amountInES);
               const tx = await timeallySIPInstance[1].functions.monthlyDeposit(
-                0, actualDepositAmountBN, monthNumber
+                0, actualDepositAmountBN, monthId
               );
               const txReceipt = await tx.wait();
               const log = txReceipt.logs[1];
               // console.log(log);
-              const depositAmount = ethers.utils.bigNumberify(_convertDataToHex(log.data, 1));
-              const yearlyBenefit = ethers.utils.bigNumberify(_convertDataToHex(log.data, 2));
+              const depositAmount = ethers.utils.bigNumberify(_convertDataToHex(log.data, 2));
+              const yearlyBenefit = ethers.utils.bigNumberify(_convertDataToHex(log.data, 3));
 
               console.log("\x1b[2m",
                 `        depositStatus: ${Number(depositStatus._hex)}\n`,
-                `        monthNumber: ${monthNumber}\n`,
+                `        monthId: ${monthId}\n`,
                 `        deposit amount: ${ethers.utils.formatEther(depositAmount)}\n`,
                 `        yearly benefit queued: ${ethers.utils.formatEther(yearlyBenefit)}`
               );
-              // for(i = 0; i <= 11; i++) {
-              //   console.log("\x1b[2m",i, ethers.utils.formatEther(await timeallySIPInstance[1].functions.monthlyBenefitAmount(accounts[1], 0, i)));
-              // }
+              for(i = 0; i <= 16; i++) {
+                console.log("\x1b[2m",i, ethers.utils.formatEther(await timeallySIPInstance[1].functions.monthlyBenefitAmount(accounts[1], 0, i)));
+              }
             } catch (error) {
+              console.log(error.message);
               assert(fail);
             }
           });
-        })
+          it('owner deposits amount pending for deposit', async() => {
+            const pendingBenefit = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
+            const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
+
+            const diff = pendingBenefit.sub(fundsDeposit);
+
+            console.log("\x1b[2m",
+              `        Owner has to deposit ${ethers.utils.formatEther(diff)} ES to SIP contract`
+            );
+
+            let tx = await esInstance[0].functions.approve(timeallySIPInstance[0].address, diff);
+            await tx.wait();
+
+            tx = await timeallySIPInstance[0].functions.addFunds(diff);
+            await tx.wait();
+
+            const fundsDepositUpdated = await timeallySIPInstance[0].functions.fundsDeposit();
+
+            assert.ok(fundsDepositUpdated.eq(pendingBenefit), 'funds deposit should be updated');
+          });
+        });
       });
     });
 
-    // describe('TimeAlly SIP Withdrawls', async() => {
-    //   it('', async() => {
-    //
-    //   });
-    // });
+    describe('TimeAlly SIP Withdrawls', async() => {
+      increaseSeconds = EARTH_SECONDS_IN_MONTH;
+
+      for(let i = 1; i <= 108; i++) {
+        describe(`Withdrawl for Month ${i}`, async() => {
+          it(`time travels to future by ${increaseSeconds} seconds`, async() => {
+            evm_increasedTime += increaseSeconds;
+            const timeIncreased = await provider.send('evm_increaseTime', [increaseSeconds]);
+
+            assert.equal(timeIncreased, evm_increasedTime, 'increase in time should be one month');
+          });
+
+          it(`Get withdrawl for monthId ${i}`, async() => {
+            const benefit = await timeallySIPInstance[1].functions.getPendingWithdrawlAmount(
+              accounts[1], 0, i
+            );
+            console.log(
+              "\x1b[2m",
+              `        Benefit Amount for Month ${i}: ${ethers.utils.formatEther(benefit)} ES`
+            );
+            const balanceOld = await esInstance[0].functions.balanceOf(accounts[1]);
+            const tx = await timeallySIPInstance[1].functions.withdrawBenefit(
+              0, i
+            );
+            const txReceipt = await tx.wait();
+            const balanceNew = await esInstance[0].functions.balanceOf(accounts[1]);
+            assert.ok(balanceNew.gt(balanceOld), 'balance should increase');
+            // console.log(txReceipt);
+          });
+        });
+      }
+    });
 
   });
 });
