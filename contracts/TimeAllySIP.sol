@@ -2,6 +2,22 @@ pragma solidity 0.5.12;
 
 import './SafeMath.sol';
 
+/**
+Month number:
+0
+1
+2
+3
+4
+5
+6
+7
+8
+9
+10
+11
+**/
+
 contract TimeAllySIP {
   using SafeMath for uint256;
 
@@ -18,11 +34,13 @@ contract TimeAllySIP {
 
   struct SIP {
     uint256 planId;
+    uint256 status; /// @dev 1 => acc period, 2 => withdraw period
     uint256 stakingTimestamp;
     uint256 monthlyCommitmentAmount;
     uint256 ctcAmount; /// @dev this amount is deposited by company for benefits
     uint256 pendingBenefitAmount; /// @dev increased everytime staker deposits
     uint256 powerBoosterAmount; /// @dev increased everytime staker deposits
+    uint256 lastWithdrawlMonthId;
     mapping(uint256 => uint256) monthlyBenefitAmount; /// @dev benefits given in yearly interval
   }
 
@@ -30,7 +48,7 @@ contract TimeAllySIP {
   ERC20 public token;
 
   /// @dev 1 Year = 365.242 days for taking care of leap years
-  uint256 public earthSecondsInMonth = 2629744;
+  uint256 public EARTH_SECONDS_IN_MONTH = 2629744;
 
   SIPPlan[] public sipPlans;
 
@@ -49,6 +67,14 @@ contract TimeAllySIP {
     uint256 _yearlyBenefitAmount
   );
 
+  event BenefitWithdrawl (
+    address indexed _staker,
+    uint256 indexed _sipId,
+    uint256 _fromMonthId,
+    uint256 _toMonthId,
+    uint256 _withdrawlAmount
+  );
+
   modifier onlyOwner() {
     require(msg.sender == owner, 'only deployer can call');
     _;
@@ -57,6 +83,14 @@ contract TimeAllySIP {
   constructor(ERC20 _token) public {
     owner = msg.sender;
     token = _token;
+  }
+
+  function monthlyBenefitAmount(
+    address _userAddress,
+    uint256 _sipId,
+    uint256 _monthId
+  ) public view returns (uint256) {
+    return sips[_userAddress][_sipId].monthlyBenefitAmount[_monthId];
   }
 
   function createSIPPlan(
@@ -104,29 +138,32 @@ contract TimeAllySIP {
 
     sips[msg.sender].push(SIP({
       planId: _planId,
+      status: 1,
       stakingTimestamp: now,
       monthlyCommitmentAmount: _monthlyCommitmentAmount,
       ctcAmount: 0,
       pendingBenefitAmount: _monthlyCommitmentAmount.mul(sipPlans[_planId].benefitPeriodYears),
-      powerBoosterAmount: _monthlyCommitmentAmount
+      powerBoosterAmount: _monthlyCommitmentAmount,
+      lastWithdrawlMonthId: 0 /// @dev withdrawl monthId starts from 1, monthId is 0
     }));
 
     /// @dev commenting this setep to save gas
-    // uint256 _sipId = sips[msg.sender].length - 1;
-    // sips[msg.sender][_sipId].monthlyBenefitAmount[1] = _monthlyCommitmentAmount;
+    uint256 _sipId = sips[msg.sender].length - 1;
+    sips[msg.sender][_sipId].monthlyBenefitAmount[0] = _monthlyCommitmentAmount;
 
     emit NewSIP(msg.sender, sips[msg.sender].length - 1, _monthlyCommitmentAmount);
   }
 
-  function _getDepositStatus(SIP storage _sip, uint256 _monthNumber) private view returns (uint256) {
+  function getDepositStatus(address _userAddress, uint256 _sipId, uint256 _monthId) public view returns (uint256) {
+    SIP storage _sip = sips[_userAddress][_sipId];
 
     /// @dev not using safemath to save gas, function is private and used
-    /// in monthlyDeposit where _monthNumber is bounded.
-    uint256 onTimeTimestamp = _sip.stakingTimestamp + earthSecondsInMonth * _monthNumber;
+    /// in monthlyDeposit where _monthId is bounded.
+    uint256 onTimeTimestamp = _sip.stakingTimestamp + EARTH_SECONDS_IN_MONTH * _monthId;
 
     if(onTimeTimestamp >= now) {
       return 1; /// @dev means deposit is ontime
-    } else if(onTimeTimestamp >= now + sipPlans[ _sip.planId ].gracePeriodSeconds) {
+    } else if(onTimeTimestamp + sipPlans[ _sip.planId ].gracePeriodSeconds >= now) {
       return 2; /// @dev means deposit is in grace period
     } else {
       return 3; /// @dev means even grace period is elapsed
@@ -136,7 +173,7 @@ contract TimeAllySIP {
   function monthlyDeposit(
     uint256 _sipId,
     uint256 _depositAmount,
-    uint256 _monthNumber
+    uint256 _monthId
   ) public {
     SIP storage _sip = sips[msg.sender][_sipId];
     require(
@@ -144,18 +181,18 @@ contract TimeAllySIP {
       , 'deposit cannot be less than commitment'
     );
     require(
-      _monthNumber > 0 && _monthNumber
-        <= sipPlans[ _sip.planId ].accumulationPeriodMonths
+      _monthId >= 0 && _monthId
+        < sipPlans[ _sip.planId ].accumulationPeriodMonths
       , 'invalid month'
     );
     require(
-      _sip.monthlyBenefitAmount[_monthNumber] == 0
+      _sip.monthlyBenefitAmount[_monthId] == 0
       , 'cannot deposit again'
     );
 
     require(token.transferFrom(msg.sender, address(this), _depositAmount));
 
-    uint256 _depositStatus = _getDepositStatus(_sip, _monthNumber);
+    uint256 _depositStatus = getDepositStatus(msg.sender, _sipId, _monthId);
     require(_depositStatus < 3, 'grace period elapsed');
 
     /// @dev _yearlyBenefitAmount is benefit queued to be withdrawn after accumulation
@@ -180,12 +217,75 @@ contract TimeAllySIP {
     }
 
     _sip.powerBoosterAmount = _sip.powerBoosterAmount.add(_depositAmount);
-    _sip.monthlyBenefitAmount[_monthNumber] = _yearlyBenefitAmount;
+    _sip.monthlyBenefitAmount[_monthId%12] = _yearlyBenefitAmount;
     _sip.pendingBenefitAmount = _sip.pendingBenefitAmount.add(
       _yearlyBenefitAmount.mul(sipPlans[ _sip.planId ].benefitPeriodYears)
     );
 
     emit NewDeposit(msg.sender, _sipId, _depositAmount, _yearlyBenefitAmount);
+  }
+
+  function getPendingWithdrawlAmount(
+    address _userAddress,
+    uint256 _sipId,
+    uint256 _withdrawlmonthId
+  ) public view returns (uint256) {
+    SIP storage _sip = sips[_userAddress][_sipId];
+    uint256 withdrawlAllowedTimestamp
+      = _sip.stakingTimestamp
+        + EARTH_SECONDS_IN_MONTH * (
+          sipPlans[ _sip.planId ].accumulationPeriodMonths
+            + _withdrawlmonthId
+        );
+    require(
+      _withdrawlmonthId > _sip.lastWithdrawlMonthId
+      , 'cannot withdraw again'
+    );
+    require(
+      _withdrawlmonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
+      , 'withdraw month exceeded'
+    );
+    require(now >= withdrawlAllowedTimestamp
+      , 'cannot withdraw early'
+    );
+    uint256 _benefitToGive;
+    for(uint256 _i = _sip.lastWithdrawlMonthId + 1; _i <= _withdrawlmonthId; _i++) {
+      _benefitToGive = _benefitToGive.add(_sip.monthlyBenefitAmount[_i%12]);
+    }
+    return _benefitToGive;
+  }
+
+  function withdrawBenefit(
+    uint256 _sipId,
+    uint256 _withdrawlmonthId
+  ) public {
+    SIP storage _sip = sips[msg.sender][_sipId];
+    uint256 _lastWithdrawlMonthId = _sip.lastWithdrawlMonthId;
+    require(_sip.status == 2, 'not in withdraw mode');
+    uint256 _withdrawlAmount = getPendingWithdrawlAmount(
+      msg.sender,
+      _sipId,
+      _withdrawlmonthId
+    );
+
+    /// @dev marking that user has withdrawn upto _withdrawlmonthId month
+    _sip.lastWithdrawlMonthId = _withdrawlmonthId;
+
+    /// @dev transfering tokens to the user wallet address
+    token.transfer(msg.sender, _sipId);
+
+    // _lastWithdrawlMonth
+    emit BenefitWithdrawl(
+      msg.sender,
+      _sipId,
+      _lastWithdrawlMonthId + 1,
+      _withdrawlmonthId,
+      _withdrawlAmount
+    );
+  }
+
+  function getTime() public view returns (uint256) {
+    return now;
   }
 }
 
