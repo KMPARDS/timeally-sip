@@ -26,7 +26,8 @@ let evm_increasedTime = 0;
 /// @dev initialize global variables
 let accounts
 , esInstance = []
-, timeallySIPInstance = [];
+, timeallySIPInstance = []
+, gasConsumed = 0;
 
 
 const sipPlans = [
@@ -271,6 +272,8 @@ describe('TimeAllySIP Contract Self', () => {
 
       it('account 1 tries to create an SIP of 500 ES monthly commitment', async() => {
         const beforeBalanceOf1 = await esInstance[0].balanceOf(accounts[1]);
+        const gasUsed = await timeallySIPInstance[1].estimate.newSIP(0, ethers.utils.parseEther('500'));
+        console.log('gasUsed', gasUsed.toNumber());
         const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('500'));
         await tx.wait();
 
@@ -304,6 +307,9 @@ describe('TimeAllySIP Contract Self', () => {
 
         assert.ok(!nominationBefore, 'nomination should not be there before');
 
+        const gasUsed = await timeallySIPInstance[1].estimate.toogleNominee(0, accounts[2], true);
+        // gasConsumed += gasUsed;
+        console.log('gasUsed', gasUsed.toNumber());
         const tx = await timeallySIPInstance[1].functions.toogleNominee(0, accounts[2], true);
         await tx.wait();
 
@@ -341,6 +347,11 @@ describe('TimeAllySIP Contract Self', () => {
                 accounts[1], 0, monthId
               );
               const actualDepositAmountBN = ethers.utils.parseEther(amountInES);
+              const gasUsed = await timeallySIPInstance[1].estimate.monthlyDeposit(
+                accounts[1], 0, actualDepositAmountBN, monthId
+              );
+              gasConsumed += gasUsed;
+              console.log('gasUsed', gasUsed.toNumber());
               const tx = await timeallySIPInstance[1].functions.monthlyDeposit(
                 accounts[1], 0, actualDepositAmountBN, monthId
               );
@@ -422,6 +433,11 @@ describe('TimeAllySIP Contract Self', () => {
               `        Benefit Amount for Month ${i}: ${ethers.utils.formatEther(benefit)} ES`
             );
             const balanceOld = await esInstance[0].functions.balanceOf(accounts[1]);
+            const gasUsed = await timeallySIPInstance[1].estimate.withdrawBenefit(
+              accounts[1], 0, i
+            );
+            gasConsumed += gasUsed;
+            console.log('gasUsed', gasUsed.toNumber());
             const tx = await timeallySIPInstance[1].functions.withdrawBenefit(
               accounts[1], 0, i
             );
@@ -442,6 +458,11 @@ describe('TimeAllySIP Contract Self', () => {
 
               const sip = await timeallySIPInstance[1].functions.sips(accounts[1], 0);
 
+              const gasUsed = await timeallySIPInstance[1].estimate.withdrawPowerBooster(
+                accounts[1], 0
+              );
+              gasConsumed += gasUsed;
+              console.log('gasUsed', gasUsed.toNumber());
               const tx = await timeallySIPInstance[1].functions.withdrawPowerBooster(
                 accounts[1], 0
               );
