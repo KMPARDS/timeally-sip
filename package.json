@@ -5,6 +5,8 @@
   "scripts": {
     "compile": "node compile.js",
     "test": "mocha --timeout 30000",
+    "test1": "mocha test/TimeAllySIP.test.js --timeout 30000",
+    "test2": "mocha test/TimeAllySIP2.test.js --timeout 30000",
     "deploy": "node deploy.js"
   },
   "author": {

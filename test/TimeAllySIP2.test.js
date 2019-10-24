@@ -42,17 +42,21 @@ const sipPlans = [
 ];
 let diff = 0;
 const safeDeposit = (seconds, add = 0) => {
-  let seconds2 = seconds;
-  if (diff) {
-    seconds2 -= diff;
-    diff = 0;
-  } else {
-    diff = add;
-  }
-  return seconds2 + add;
-  // return seconds + add;
+  diff += add;
+  return seconds - diff + add;
 };
 const depositTestCases = [
+  // [
+  //   safeDeposit(EARTH_SECONDS_IN_MONTH),
+  //   '600',
+  //   1
+  // ],
+  // [
+  //   0,
+  //   '1000',
+  //   1,
+  //   'fail'
+  // ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
     '1000',
@@ -65,7 +69,7 @@ const depositTestCases = [
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '5000',
+    '500',
     4
   ],
   [
@@ -146,7 +150,7 @@ describe('Eraswap Setup', () => {
 });
 
 /// @dev this is another test case collection
-describe('TimeAllySIP Contract Self', () => {
+describe('TimeAllySIP Contract Nominee', () => {
 
   /// @dev describe under another describe is a sub test case collection
   describe('TimeAllySIP Setup', async() => {
@@ -161,10 +165,6 @@ describe('TimeAllySIP Contract Self', () => {
         provider.getSigner(accounts[0])
       );
       timeallySIPInstance[0] =  await TimeAllySIPContractFactory.deploy(esInstance[0].address);
-
-      const tx = await timeallySIPInstance[0].deployTransaction.wait()
-
-      console.log(tx.gasUsed.toNumber());
 
       assert.ok(timeallySIPInstance[0].address, 'conract address should be present');
     });
@@ -206,19 +206,7 @@ describe('TimeAllySIP Contract Self', () => {
         sipPlan.defaultPenaltyFactor.eq(args.defaultPenaltyFactor),
         'topupBenefitFactor should be set properly'
       );
-    });
 
-    it('adds 10000 ES to funds', async() => {
-      const funds = ethers.utils.parseEther('10000');
-      const tx1 = await esInstance[0].functions.approve(timeallySIPInstance[0].address, funds);
-      await tx1.wait();
-
-      const tx2 = await timeallySIPInstance[0].functions.addFunds(funds);
-      await tx2.wait();
-
-      const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
-
-      assert.ok(fundsDeposit.eq(funds), 'funds should be deposited');
     });
   });
 
@@ -238,6 +226,19 @@ describe('TimeAllySIP Contract Self', () => {
         assert.ok(balanceOf1.eq(ethers.utils.parseEther('10000')), 'account 1 should get 10,000 ES');
       });
 
+      it('deployer sends 10,000 ES to account 2', async() => {
+        const tx = await esInstance[0].functions.transfer(
+          accounts[2],
+          ethers.utils.parseEther('10000')
+        );
+
+        await tx.wait();
+
+        const balanceOf2 = await esInstance[0].balanceOf(accounts[2]);
+
+        assert.ok(balanceOf2.eq(ethers.utils.parseEther('10000')), 'account 2 should get 10,000 ES');
+      });
+
       it('account 1 gives allowance of 500 ES to TimeAllySIP Contract', async() => {
         esInstance[1] = new ethers.Contract(
           esInstance[0].address,
@@ -253,23 +254,13 @@ describe('TimeAllySIP Contract Self', () => {
         assert.ok(allowanceToSip.eq(ethers.utils.parseEther('500')), 'allowance should be set');
       });
 
-      it('account 1 tries to create an SIP of 400 ES, should fail with plan id 0', async() => {
+      it('account 1 tries to create an SIP of 500 ES monthly commitment', async() => {
         timeallySIPInstance[1] = new ethers.Contract(
           timeallySIPInstance[0].address,
           timeallySIPJSON.abi,
           provider.getSigner(accounts[1])
         );
 
-        try {
-          const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('400'));
-          await tx.wait();
-          assert(false, 'amount less than 500 ES should throw error');
-        } catch (error) {
-          assert.ok(error.message.includes('revert amount should be atleast minimum'), 'error should be of revert and amount should be atleast minimum')
-        }
-      });
-
-      it('account 1 tries to create an SIP of 500 ES monthly commitment', async() => {
         const beforeBalanceOf1 = await esInstance[0].balanceOf(accounts[1]);
         const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('500'));
         await tx.wait();
@@ -295,13 +286,6 @@ describe('TimeAllySIP Contract Self', () => {
       it('assign a nominee', async() => {
         const nominationBefore = await timeallySIPInstance[1].functions.viewNomination(accounts[1], 0, accounts[2]);
 
-        /// @dev activating 2nd account instance
-        timeallySIPInstance[2] = new ethers.Contract(
-          timeallySIPInstance[0].address,
-          timeallySIPJSON.abi,
-          provider.getSigner(accounts[2])
-        );
-
         assert.ok(!nominationBefore, 'nomination should not be there before');
 
         const tx = await timeallySIPInstance[1].functions.toogleNominee(0, accounts[2], true);
@@ -309,14 +293,26 @@ describe('TimeAllySIP Contract Self', () => {
 
         const nominationAfter = await timeallySIPInstance[1].functions.viewNomination(accounts[1], 0, accounts[2]);
 
+        /// @dev activating 2nd account instance
+        esInstance[2] = new ethers.Contract(
+          esInstance[0].address,
+          esJson.abi,
+          provider.getSigner(accounts[2])
+        );
+        timeallySIPInstance[2] = new ethers.Contract(
+          timeallySIPInstance[0].address,
+          timeallySIPJSON.abi,
+          provider.getSigner(accounts[2])
+        );
+
         assert.ok(nominationAfter, 'nomination should be there now');
       });
     });
 
-    describe('Continue TimeAlly SIP deposits', async() => {
+    describe('Nominee Continues TimeAlly SIP deposits', async() => {
       depositTestCases.forEach(entry => {
         const [increaseSeconds, amountInES, monthId, fail] = entry;
-        describe(`Deposit of Month ${monthId}`, async() => {
+        describe(`Nominee Deposit of Month ${monthId}`, async() => {
           if(increaseSeconds) {
             it(`time travels to future by ${increaseSeconds} seconds`, async() => {
               evm_increasedTime += increaseSeconds;
@@ -326,22 +322,23 @@ describe('TimeAllySIP Contract Self', () => {
             });
           }
 
-          it(`gives allowance of ${amountInES} ES to TimeAlly SIP contract`, async() => {
-            const tx = await esInstance[1].functions.approve(timeallySIPInstance[0].address, ethers.utils.parseEther(amountInES));
+          it(`account 2 gives allowance of ${amountInES} ES to TimeAlly SIP contract`, async() => {
+            const tx = await esInstance[2].functions.approve(timeallySIPInstance[0].address, ethers.utils.parseEther(amountInES));
             await tx.wait();
 
-            const allowanceToSip = await esInstance[1].functions.allowance(accounts[1], timeallySIPInstance[0].address);
+            const allowanceToSip = await esInstance[2].functions.allowance(accounts[2], timeallySIPInstance[0].address);
 
             assert.ok(allowanceToSip.eq(ethers.utils.parseEther(amountInES)), 'allowance should be set');
           });
 
-          it(`depositing ${amountInES} ES in SIP month ${monthId}${fail ? ` should give error` : ''}`, async() => {
+          it(`account 2 depositing ${amountInES} ES in SIP month ${monthId} for account 1${fail ? ` should give error` : ''}`, async() => {
             try {
-              const depositStatus = await timeallySIPInstance[1].functions.getDepositStatus(
+              /// @dev account 2 depositing for account 1
+              const depositStatus = await timeallySIPInstance[2].functions.getDepositStatus(
                 accounts[1], 0, monthId
               );
               const actualDepositAmountBN = ethers.utils.parseEther(amountInES);
-              const tx = await timeallySIPInstance[1].functions.monthlyDeposit(
+              const tx = await timeallySIPInstance[2].functions.monthlyDeposit(
                 accounts[1], 0, actualDepositAmountBN, monthId
               );
               const txReceipt = await tx.wait();
@@ -357,55 +354,51 @@ describe('TimeAllySIP Contract Self', () => {
                 `        yearly benefit queued: ${ethers.utils.formatEther(yearlyBenefit)}`
               );
               for(i = 0; i <= 16; i++) {
-                console.log("\x1b[2m",i, String(await timeallySIPInstance[1].functions.getDepositDoneStatus(accounts[1], 0, i)));
+                console.log("\x1b[2m",i, String(await timeallySIPInstance[2].functions.getDepositDoneStatus(accounts[1], 0, i)));
               }
             } catch (error) {
               console.log(error.message);
               assert(fail);
             }
           });
-          // it('owner deposits amount pending for deposit', async() => {
-          //   const pendingBenefit = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
-          //   const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
-          //
-          //   const diff = pendingBenefit.sub(fundsDeposit);
-          //
-          //   console.log("\x1b[2m",
-          //     `        Owner has to deposit ${ethers.utils.formatEther(diff)} ES to SIP contract`
-          //   );
-          //
-          //   let tx = await esInstance[0].functions.approve(timeallySIPInstance[0].address, diff);
-          //   await tx.wait();
-          //
-          //   tx = await timeallySIPInstance[0].functions.addFunds(diff);
-          //   await tx.wait();
-          //
-          //   const fundsDepositUpdated = await timeallySIPInstance[0].functions.fundsDeposit();
-          //
-          //   assert.ok(fundsDepositUpdated.eq(pendingBenefit), 'funds deposit should be updated');
-          // });
+          it('owner deposits amount pending for deposit', async() => {
+            const pendingBenefit = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
+            const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
+
+            const diff = pendingBenefit.sub(fundsDeposit);
+
+            console.log("\x1b[2m",
+              `        Owner has to deposit ${ethers.utils.formatEther(diff)} ES to SIP contract`
+            );
+
+            let tx = await esInstance[0].functions.approve(timeallySIPInstance[0].address, diff);
+            await tx.wait();
+
+            tx = await timeallySIPInstance[0].functions.addFunds(diff);
+            await tx.wait();
+
+            const fundsDepositUpdated = await timeallySIPInstance[0].functions.fundsDeposit();
+
+            assert.ok(fundsDepositUpdated.eq(pendingBenefit), 'funds deposit should be updated');
+          });
         });
       });
     });
 
     describe('TimeAlly SIP Withdrawls', async() => {
-      it('checks if enough funds', async() => {
-        const pendingBenefit = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
-        const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
+      const monthsToIncrease = 1;
+      increaseSeconds = EARTH_SECONDS_IN_MONTH*monthsToIncrease;
 
-        const balance = await esInstance[0].functions.balanceOf(timeallySIPInstance[0].address);
+      it(`time travels to future by 1 year`, async() => {
+        const increaseSeconds = EARTH_SECONDS_IN_MONTH * 12;
+        evm_increasedTime += increaseSeconds;
+        const timeIncreased = await provider.send('evm_increaseTime', [increaseSeconds]);
 
-
-        console.log('pendingBenefit',ethers.utils.formatEther(pendingBenefit));
-        console.log('fundsDeposit',ethers.utils.formatEther(fundsDeposit));
-        console.log('balance',ethers.utils.formatEther(balance));
-
+        assert.equal(timeIncreased, evm_increasedTime, 'increase in time should be one month');
       });
 
-      increaseSeconds = EARTH_SECONDS_IN_MONTH;
-
-      for(let i = 1; i <= 108; i++) {
-        describe(`Withdrawl for Month ${i}`, async() => {
+      for(let i = 1; i <= 108; i+=monthsToIncrease) {
+        describe(`Nominee Withdrawl for Month ${i}`, async() => {
           it(`time travels to future by ${increaseSeconds} seconds`, async() => {
             evm_increasedTime += increaseSeconds;
             const timeIncreased = await provider.send('evm_increaseTime', [increaseSeconds]);
@@ -413,42 +406,46 @@ describe('TimeAllySIP Contract Self', () => {
             assert.equal(timeIncreased, evm_increasedTime, 'increase in time should be one month');
           });
 
-          it(`Get withdrawl for monthId ${i}`, async() => {
-            const benefit = await timeallySIPInstance[1].functions.getPendingWithdrawlAmount(
+          it(`Nominee Get withdrawl for monthId ${i}`, async() => {
+            const benefit = await timeallySIPInstance[2].functions.getPendingWithdrawlAmount(
               accounts[1], 0, i, false
             );
             console.log(
               "\x1b[2m",
               `        Benefit Amount for Month ${i}: ${ethers.utils.formatEther(benefit)} ES`
             );
-            const balanceOld = await esInstance[0].functions.balanceOf(accounts[1]);
-            const tx = await timeallySIPInstance[1].functions.withdrawBenefit(
+            const balanceOld = await esInstance[0].functions.balanceOf(accounts[2]);
+            const tx = await timeallySIPInstance[2].functions.withdrawBenefit(
               accounts[1], 0, i
             );
             const txReceipt = await tx.wait();
-            const balanceNew = await esInstance[0].functions.balanceOf(accounts[1]);
+            const balanceNew = await esInstance[0].functions.balanceOf(accounts[2]);
             assert.ok(balanceNew.gt(balanceOld), 'balance should increase');
             // console.log(txReceipt);
-
-            const balance = await esInstance[0].functions.balanceOf(timeallySIPInstance[0].address);
-            console.log('balance',ethers.utils.formatEther(balance));
           });
         });
 
         if((i)%36 === 0) {
           describe('PowerBoosterWithdrawl', async() => {
             it(`Get power booster withdrawl on monthId ${i}`, async() => {
-              const balanceOld = await esInstance[0].functions.balanceOf(accounts[1]);
+              const balanceOld = await esInstance[0].functions.balanceOf(accounts[2]);
 
-              const sip = await timeallySIPInstance[1].functions.sips(accounts[1], 0);
+              const sip = await timeallySIPInstance[2].functions.sips(accounts[1], 0);
 
-              const tx = await timeallySIPInstance[1].functions.withdrawPowerBooster(
+              const calculatePowerBooster = await timeallySIPInstance[2].functions.calculatePowerBooster(
+                accounts[1], 0, +sip.powerBoosterWithdrawls + 1
+              );
+
+              // console.log('calculatePowerBooster', calculatePowerBooster);
+
+              const tx = await timeallySIPInstance[2].functions.withdrawPowerBooster(
                 accounts[1], 0
               );
               const txReceipt = await tx.wait();
-              const balanceNew = await esInstance[0].functions.balanceOf(accounts[1]);
+              const balanceNew = await esInstance[0].functions.balanceOf(accounts[2]);
               console.log(
                 "\x1b[2m",
+                `        PowerBooster calculated for ${i}: ${ethers.utils.formatEther(calculatePowerBooster)} ES\n`,
                 `        PowerBooster received on ${i}: ${ethers.utils.formatEther(balanceNew.sub(balanceOld))} ES`
               );
               assert.ok(balanceNew.gt(balanceOld), 'balance should increase');

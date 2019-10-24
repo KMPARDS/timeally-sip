@@ -124,6 +124,19 @@ contract TimeAllySIP {
     bool _nomineeStatus
   );
 
+  event AppointeeUpdated (
+    address indexed _staker,
+    uint256 indexed _sipId,
+    address indexed _appointeeAddress,
+    bool _appointeeStatus
+  );
+
+  event AppointeeVoted (
+    address indexed _staker,
+    uint256 indexed _sipId,
+    address indexed _appointeeAddress
+  );
+
   modifier onlyOwner() {
     require(msg.sender == owner, 'only deployer can call');
     _;
@@ -143,11 +156,11 @@ contract TimeAllySIP {
   }
 
   function getDepositDoneStatus(
-    address _userAddress,
+    address _stakerAddress,
     uint256 _sipId,
     uint256 _monthId
   ) public view returns (uint256) {
-    return sips[_userAddress][_sipId].depositStatus[_monthId];
+    return sips[_stakerAddress][_sipId].depositStatus[_monthId];
   }
 
   function createSIPPlan(
@@ -158,9 +171,6 @@ contract TimeAllySIP {
     uint256 _monthlyBenefitFactor,
     uint256 _gracePenaltyFactor,
     uint256 _defaultPenaltyFactor
-    // uint256 _onTimeBenefitFactor,
-    // uint256 _graceBenefitFactor,
-    // uint256 _topupBenefitFactor
   ) public onlyOwner {
     sipPlans.push(SIPPlan({
       isPlanActive: true,
@@ -171,9 +181,6 @@ contract TimeAllySIP {
       monthlyBenefitFactor: _monthlyBenefitFactor,
       gracePenaltyFactor: _gracePenaltyFactor,
       defaultPenaltyFactor: _defaultPenaltyFactor
-      // onTimeBenefitFactor: _onTimeBenefitFactor,
-      // graceBenefitFactor: _graceBenefitFactor,
-      // topupBenefitFactor: _topupBenefitFactor
     }));
   }
 
@@ -204,6 +211,16 @@ contract TimeAllySIP {
       _monthlyCommitmentAmount >= sipPlans[_planId].minimumMonthlyCommitmentAmount
       , 'amount should be atleast minimum'
     );
+
+    uint256 _benefitsToBeGiven = _monthlyCommitmentAmount
+      .mul(sipPlans[ _planId ].monthlyBenefitFactor)
+      .div(1000)
+      .mul(sipPlans[ _planId ].benefitPeriodYears);
+
+    require(
+      fundsDeposit >= _benefitsToBeGiven
+      , 'enough funds should be there in SIP'
+    );
     require(token.transferFrom(msg.sender, address(this), _monthlyCommitmentAmount));
 
     sips[msg.sender].push(SIP({
@@ -218,36 +235,21 @@ contract TimeAllySIP {
       appointeeVotes: 0
     }));
 
-    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
-      _monthlyCommitmentAmount
-        .mul(sipPlans[_planId].monthlyBenefitFactor)
-        .div(1000)
-        .mul(sipPlans[_planId].benefitPeriodYears)
-    );
-
     uint256 _sipId = sips[msg.sender].length - 1;
-
-    // /// @dev this is not required, commenting
-    // uint256 _yearlyBenefitAmount = _monthlyCommitmentAmount.mul(sipPlans[ _planId ].onTimeBenefitFactor).div(1000);
 
     /// @dev marking month 1 as paid on time
     sips[msg.sender][_sipId].depositStatus[1] = 2;
 
-    uint256 _benefitQueued = _monthlyCommitmentAmount
-      .mul(sipPlans[ _planId ].monthlyBenefitFactor)
-      .div(1000)
-      .mul(sipPlans[ _planId ].benefitPeriodYears);
-
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
-      _benefitQueued
+      _benefitsToBeGiven
     );
 
     emit NewSIP(msg.sender, sips[msg.sender].length - 1, _monthlyCommitmentAmount);
-    emit NewDeposit(msg.sender, _sipId, 1, _monthlyCommitmentAmount, _benefitQueued, msg.sender);
+    emit NewDeposit(msg.sender, _sipId, 1, _monthlyCommitmentAmount, _benefitsToBeGiven, msg.sender);
   }
 
-  function getDepositStatus(address _userAddress, uint256 _sipId, uint256 _monthId) public view returns (uint256) {
-    SIP storage _sip = sips[_userAddress][_sipId];
+  function getDepositStatus(address _stakerAddress, uint256 _sipId, uint256 _monthId) public view returns (uint256) {
+    SIP storage _sip = sips[_stakerAddress][_sipId];
 
     require(
       _monthId >= 1 && _monthId
@@ -256,7 +258,7 @@ contract TimeAllySIP {
     );
 
     /// @dev not using safemath to save gas, because _monthId is bounded.
-    uint256 onTimeTimestamp = _sip.stakingTimestamp + EARTH_SECONDS_IN_MONTH * _monthId;
+    uint256 onTimeTimestamp = _sip.stakingTimestamp + EARTH_SECONDS_IN_MONTH * (_monthId - 1);
 
     /// @dev deposit allowed only one month before deadline
     if(onTimeTimestamp >= now && now >= onTimeTimestamp - EARTH_SECONDS_IN_MONTH) {
@@ -286,53 +288,30 @@ contract TimeAllySIP {
       , 'cannot deposit again'
     );
 
-    require(token.transferFrom(msg.sender, address(this), _depositAmount));
-
-    uint256 _depositStatus = getDepositStatus(_stakerAddress, _sipId, _monthId);
-
-    /// @dev check if deposit is allowed according to current time
-    require(_depositStatus > 0, 'grace period elapsed or too early');
-
-    _sip.depositStatus[_monthId] = _depositStatus;
-    /// @dev _yearlyBenefitAmount is benefit queued to be withdrawn after accumulation
-    // uint256 _yearlyBenefitAmount = _sip.monthlyCommitmentAmount;
-    // if(_depositStatus == 1) {
-    //   _yearlyBenefitAmount = _yearlyBenefitAmount.mul(
-    //     sipPlans[ _sip.planId ].onTimeBenefitFactor
-    //   ).div(1000);
-    // } else {
-    //   _yearlyBenefitAmount = _yearlyBenefitAmount.mul(
-    //     sipPlans[ _sip.planId ].graceBenefitFactor
-    //   ).div(1000);
-    // }
-    //
-    // if(_depositAmount > _sip.monthlyCommitmentAmount) {
-    //   _yearlyBenefitAmount = _yearlyBenefitAmount.add(
-    //     _depositAmount
-    //     .sub(_sip.monthlyCommitmentAmount)
-    //     .mul(sipPlans[ _sip.planId ].topupBenefitFactor)
-    //     .div(1000)
-    //   );
-    // }
-
-    _sip.totalDeposited = _sip.totalDeposited.add(_depositAmount);
-    //
-    // uint256 _monthIdModulus = _monthId%12;
-    // if(_monthIdModulus == 0) _monthIdModulus = 12;
-    // _sip.monthlyBenefitAmount[_monthIdModulus] = _yearlyBenefitAmount;
-
-    // uint256 _benefitQueued = _yearlyBenefitAmount.mul(sipPlans[ _sip.planId ].benefitPeriodYears);
-
-    uint256 _benefitQueued = _depositAmount
+    uint256 _benefitsToBeGiven = _depositAmount
       .mul(sipPlans[ _sip.planId ].monthlyBenefitFactor)
       .div(1000)
       .mul(sipPlans[ _sip.planId ].benefitPeriodYears);
 
-    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
-      _benefitQueued
+    require(
+      fundsDeposit >= _benefitsToBeGiven.add(pendingBenefitAmountOfAllStakers)
+      , 'enough funds should be there in SIP'
     );
 
-    emit NewDeposit(_stakerAddress, _sipId, _monthId, _depositAmount, _benefitQueued, msg.sender);
+    require(token.transferFrom(msg.sender, address(this), _depositAmount));
+
+    /// @dev check if deposit is allowed according to current time
+    uint256 _depositStatus = getDepositStatus(_stakerAddress, _sipId, _monthId);
+    require(_depositStatus > 0, 'grace period elapsed or too early');
+
+    _sip.depositStatus[_monthId] = _depositStatus;
+
+    _sip.totalDeposited = _sip.totalDeposited.add(_depositAmount);
+    pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
+      _benefitsToBeGiven
+    );
+
+    emit NewDeposit(_stakerAddress, _sipId, _monthId, _depositAmount, _benefitsToBeGiven, msg.sender);
   }
 
   function getPendingWithdrawlAmount(
@@ -350,15 +329,20 @@ contract TimeAllySIP {
         );
 
     if(_isNomineeWithdrawing) {
-      withdrawlAllowedTimestamp += EARTH_SECONDS_IN_MONTH * 12;
+      if(_sip.appointeeVotes > _sip.numberOfAppointees.div(2)) {
+        withdrawlAllowedTimestamp += EARTH_SECONDS_IN_MONTH * 6;
+      } else {
+        withdrawlAllowedTimestamp += EARTH_SECONDS_IN_MONTH * 12;
+      }
     }
+
+    require(
+      _withdrawlMonthId > 0 && _withdrawlMonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
+      , 'invalid withdraw month'
+    );
     require(
       _withdrawlMonthId > _sip.lastWithdrawlMonthId
       , 'cannot withdraw again'
-    );
-    require(
-      _withdrawlMonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
-      , 'withdraw month exceeded'
     );
     require(now >= withdrawlAllowedTimestamp
       , 'cannot withdraw early'
@@ -409,33 +393,6 @@ contract TimeAllySIP {
     );
   }
 
-  function calculatePowerBooster(
-    address _stakerAddress,
-    uint256 _sipId,
-    uint256 _boosterSerial
-  ) public view returns (uint256) {
-    SIP storage _sip = sips[_stakerAddress][_sipId];
-
-    uint256 _powerBoosterAmount = _sip.monthlyCommitmentAmount
-      .mul(sipPlans[ _sip.planId ].accumulationPeriodMonths).div(3);
-
-    if(_boosterSerial == 1) {
-      uint256 _totalPenaltyFactor;
-      for(uint256 i = 1; i <= sipPlans[ _sip.planId ].accumulationPeriodMonths; i++) {
-        if(_sip.depositStatus[i] == 0) {
-          /// @dev defaulted
-          _totalPenaltyFactor += sipPlans[ _sip.planId ].defaultPenaltyFactor;
-        } else if(_sip.depositStatus[i] == 1) {
-          /// @dev grace period
-          _totalPenaltyFactor += sipPlans[ _sip.planId ].gracePenaltyFactor;
-        }
-      }
-      _powerBoosterAmount = _powerBoosterAmount.mul(uint256(1000).sub(_totalPenaltyFactor)).div(1000);
-    }
-
-    return _powerBoosterAmount;
-  }
-
   function withdrawPowerBooster(
     address _stakerAddress,
     uint256 _sipId
@@ -451,14 +408,38 @@ contract TimeAllySIP {
       + sipPlans[ _sip.planId ].benefitPeriodYears * 12 * EARTH_SECONDS_IN_MONTH * _powerBoosterSerial / 3 - EARTH_SECONDS_IN_MONTH;
 
     if(msg.sender != _stakerAddress) {
-      _allowedTimestamp += EARTH_SECONDS_IN_MONTH * 12;
+      if(_sip.appointeeVotes > _sip.numberOfAppointees.div(2)) {
+        _allowedTimestamp += EARTH_SECONDS_IN_MONTH * 6;
+      } else {
+        _allowedTimestamp += EARTH_SECONDS_IN_MONTH * 12;
+      }
     }
-    require(now > _allowedTimestamp, 'cannot withdraw early');
 
-    uint256 _powerBoosterAmount = calculatePowerBooster(_stakerAddress, _sipId, _powerBoosterSerial);
+    require(now > _allowedTimestamp, 'cannot withdraw early');
 
     /// @dev marking that power booster is withdrawn
     _sip.powerBoosterWithdrawls = _powerBoosterSerial;
+
+    uint256 _powerBoosterAmount = _sip.totalDeposited.div(3);
+
+    if(_powerBoosterSerial == 1) {
+      uint256 _totalPenaltyFactor;
+      for(uint256 i = 1; i <= sipPlans[ _sip.planId ].accumulationPeriodMonths; i++) {
+        if(_sip.depositStatus[i] == 0) {
+          /// @dev defaulted
+          _totalPenaltyFactor += sipPlans[ _sip.planId ].defaultPenaltyFactor;
+        } else if(_sip.depositStatus[i] == 1) {
+          /// @dev grace period
+          _totalPenaltyFactor += sipPlans[ _sip.planId ].gracePenaltyFactor;
+        }
+      }
+      uint256 _penaltyAmount = _powerBoosterAmount.mul(_totalPenaltyFactor).div(1000);
+
+      /// @dev allocate penalty into fund.
+      fundsDeposit = fundsDeposit.add(_penaltyAmount);
+
+      _powerBoosterAmount = _powerBoosterAmount.sub(_penaltyAmount);
+    }
 
     token.transfer(msg.sender, _powerBoosterAmount);
 
@@ -476,8 +457,53 @@ contract TimeAllySIP {
     emit NomineeUpdated(msg.sender, _sipId, _nomineeAddress, _newNomineeStatus);
   }
 
-  function viewNomination(address _userAddress, uint256 _sipId, address _nomineeAddress) public view returns (bool) {
-    return sips[_userAddress][_sipId].nominees[_nomineeAddress];
+  function viewNomination(address _stakerAddress, uint256 _sipId, address _nomineeAddress) public view returns (bool) {
+    return sips[_stakerAddress][_sipId].nominees[_nomineeAddress];
+  }
+
+  // check all four cases in mocha
+  // false -> true
+  // true -> true
+  // true -> false
+  // false -> false
+  function toogleAppointee(
+    uint256 _sipId,
+    address _appointeeAddress,
+    bool _newAppointeeStatus
+  ) public {
+    SIP storage _sip = sips[msg.sender][_sipId];
+    if(!_sip.appointees[_appointeeAddress] && _newAppointeeStatus) {
+      /// @dev adding appointee
+      _sip.numberOfAppointees = _sip.numberOfAppointees.add(1);
+      _sip.nominees[_appointeeAddress] = true;
+
+    } else if(_sip.appointees[_appointeeAddress] && !_newAppointeeStatus) {
+      _sip.nominees[_appointeeAddress] = false;
+      _sip.numberOfAppointees = _sip.numberOfAppointees.sub(1);
+    }
+    emit AppointeeUpdated(msg.sender, _sipId, _appointeeAddress, _newAppointeeStatus);
+  }
+
+  function viewAppointation(
+    address _stakerAddress,
+    uint256 _sipId,
+    address _appointeeAddress
+  ) public view returns (bool) {
+    return sips[_stakerAddress][_sipId].appointees[_appointeeAddress];
+  }
+
+  function appointeeVote(
+    address _stakerAddress,
+    uint256 _sipId
+  ) public {
+    SIP storage _sip = sips[_stakerAddress][_sipId];
+    require(_sip.appointees[msg.sender]
+      , 'should be appointee to cast vote'
+    );
+    _sip.appointees[msg.sender] = false;
+    _sip.appointeeVotes = _sip.appointeeVotes.add(1);
+
+    emit AppointeeVoted(_stakerAddress, _sipId, msg.sender);
   }
 
   function getTime() public view returns (uint256) {
