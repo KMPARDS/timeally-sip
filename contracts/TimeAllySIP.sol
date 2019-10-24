@@ -4,7 +4,20 @@ import './SafeMath.sol';
 
 /**
 
+work on add power booster withdrawl
+- compare a different withdrawl with one transaction withdrawl
+- power booster only on commitment
+
 remove status from sip struct
+- might be required for nomineeWithdraw
+
+make gas estimation report
+
+nominee can withdraw benefit after one year
+
+add multisig trustee / appointee
+
+
 
 **/
 
@@ -27,11 +40,13 @@ contract TimeAllySIP {
     uint256 status; /// @dev 1 => acc period, 2 => withdraw period
     uint256 stakingTimestamp;
     uint256 monthlyCommitmentAmount;
-    // uint256 ctcAmount; /// @dev this amount is deposited by company for benefits
-    // uint256 pendingBenefitAmount; /// @dev increased everytime staker deposits
-    uint256 powerBoosterAmount; /// @dev increased everytime staker deposits
     uint256 lastWithdrawlMonthId;
+    uint256 powerBoosterWithdrawls;
+    uint256 numberOfAppointees;
+    uint256 appointeeVotes;
     mapping(uint256 => uint256) monthlyBenefitAmount; /// @dev benefits given in yearly interval
+    mapping(address => bool) nominees;
+    mapping(address => bool) appointees;
   }
 
   address public owner;
@@ -41,7 +56,6 @@ contract TimeAllySIP {
   uint256 public EARTH_SECONDS_IN_MONTH = 2629744;
   uint256 public pendingBenefitAmountOfAllStakers;
   uint256 public fundsDeposit; /// @dev deposited by company
-
 
   SIPPlan[] public sipPlans;
 
@@ -55,7 +69,7 @@ contract TimeAllySIP {
 
   event NewDeposit (
     address indexed _staker,
-    uint256 _sipId,
+    uint256 indexed _sipId,
     uint256 _monthId,
     uint256 _depositAmount,
     uint256 _benefitQueued
@@ -69,12 +83,26 @@ contract TimeAllySIP {
     uint256 _withdrawlAmount
   );
 
+  event PowerBoosterWithdrawl (
+    address indexed _staker,
+    uint256 indexed _sipId,
+    uint256 _boosterSerial,
+    uint256 _withdrawlAmount
+  );
+
   event FundsDeposited (
     uint256 _depositAmount
   );
 
   event FundsWithdrawn (
     uint256 _withdrawlAmount
+  );
+
+  event NomineeUpdated (
+    address indexed _staker,
+    uint256 indexed _sipId,
+    address indexed _nomineeAddress,
+    bool _nomineeStatus
   );
 
   modifier onlyOwner() {
@@ -145,27 +173,15 @@ contract TimeAllySIP {
     );
     require(token.transferFrom(msg.sender, address(this), _monthlyCommitmentAmount));
 
-    /// @dev old code of using array data structure just in case required
-    // SIP memory _userSIP;
-    // _userSIP.planId = _planId;
-    // _userSIP.stakingTimestamp = now;
-    // _userSIP.monthlyCommitmentAmount = _monthlyCommitmentAmount;
-    // _userSIP.ctcAmount = 0;
-    // _userSIP.pendingBenefitAmount = _monthlyCommitmentAmount.mul(sipPlans[_planId].benefitPeriodYears);
-    // _userSIP.powerBoosterAmount = _monthlyCommitmentAmount;
-    // sips[msg.sender].push(_userSIP);
-    // uint256 _sipId = sips[msg.sender].length - 1;
-    // sips[msg.sender][_sipId].monthlyBenefitAmount.push(_monthlyCommitmentAmount);
-
     sips[msg.sender].push(SIP({
       planId: _planId,
       status: 1,
       stakingTimestamp: now,
       monthlyCommitmentAmount: _monthlyCommitmentAmount,
-      // ctcAmount: 0,
-      // pendingBenefitAmount: _monthlyCommitmentAmount.mul(sipPlans[_planId].benefitPeriodYears),
-      powerBoosterAmount: _monthlyCommitmentAmount,
-      lastWithdrawlMonthId: 0 /// @dev withdrawl monthId starts from 1
+      lastWithdrawlMonthId: 0, /// @dev withdrawl monthId starts from 1
+      powerBoosterWithdrawls: 0,
+      numberOfAppointees: 0,
+      appointeeVotes: 0
     }));
 
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
@@ -252,7 +268,7 @@ contract TimeAllySIP {
       );
     }
 
-    _sip.powerBoosterAmount = _sip.powerBoosterAmount.add(_depositAmount);
+    // _sip.powerBoosterAmount = _sip.powerBoosterAmount.add(_depositAmount);
     uint256 _monthIdModulus = _monthId%12;
     if(_monthIdModulus == 0) _monthIdModulus = 12;
     _sip.monthlyBenefitAmount[_monthIdModulus] = _yearlyBenefitAmount;
@@ -328,6 +344,44 @@ contract TimeAllySIP {
       _withdrawlAmount
     );
   }
+
+  function withdrawPowerBooster(uint256 _sipId) public {
+    SIP storage _sip = sips[msg.sender][_sipId];
+
+    require(_sip.powerBoosterWithdrawls < 3, 'only 3 power boosters');
+    uint256 _powerBoosterSerial = _sip.powerBoosterWithdrawls + 1;
+
+    /// @dev not using SafeMath because range is safe
+    uint256 _allowedTimestamp = _sip.stakingTimestamp
+      + sipPlans[ _sip.planId ].accumulationPeriodMonths * EARTH_SECONDS_IN_MONTH
+      + sipPlans[ _sip.planId ].benefitPeriodYears * 12 * EARTH_SECONDS_IN_MONTH * _powerBoosterSerial / 3 - EARTH_SECONDS_IN_MONTH;
+    require(now > _allowedTimestamp, 'cannot withdraw early');
+
+    uint256 _oneThirdPowerBoosterAmount = _sip.monthlyCommitmentAmount
+      .mul(sipPlans[ _sip.planId ].accumulationPeriodMonths).div(3);
+
+    token.transfer(msg.sender, _oneThirdPowerBoosterAmount);
+    _sip.powerBoosterWithdrawls = _powerBoosterSerial;
+
+    emit PowerBoosterWithdrawl(msg.sender, _sipId, _powerBoosterSerial, _oneThirdPowerBoosterAmount);
+  }
+
+  function toogleNominee(uint256 _sipId, address _nomineeAddress, bool _newNomineeStatus) public {
+    sips[msg.sender][_sipId].nominees[_nomineeAddress] = _newNomineeStatus;
+    emit NomineeUpdated(msg.sender, _sipId, _nomineeAddress, _newNomineeStatus);
+  }
+
+  function viewNomination(address _userAddress, uint256 _sipId, address _nomineeAddress) public view returns (bool) {
+    return sips[_userAddress][_sipId].nominees[_nomineeAddress];
+  }
+
+  // function nomineeWithdraw(address _userAddress, uint256 _sipId) public {
+  //   require(sips[_userAddress][_sipId].nomineeShares[msg.sender] > 0
+  //     , 'nomination should be there'
+  //   );
+  //
+  //   require(now > sips[_userAddress][_sipId].stakingTimestamp)
+  // }
 
   function getTime() public view returns (uint256) {
     return now;

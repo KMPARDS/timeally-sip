@@ -51,15 +51,15 @@ const depositTestCases = [
   //   '600',
   //   1
   // ],
-  [
-    0,
-    '500',
-    1,
-    'fail'
-  ],
+  // [
+  //   0,
+  //   '1000',
+  //   1,
+  //   'fail'
+  // ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '500',
+    '1000',
     2
   ],
   [
@@ -384,6 +384,26 @@ describe('TimeAllySIP Contract', () => {
             // console.log(txReceipt);
           });
         });
+
+        if((i)%36 === 0) {
+          describe('PowerBoosterWithdrawl', async() => {
+            it(`Get power booster withdrawl on monthId ${i}`, async() => {
+              const balanceOld = await esInstance[0].functions.balanceOf(accounts[1]);
+              const tx = await timeallySIPInstance[1].functions.withdrawPowerBooster(
+                0
+              );
+              const txReceipt = await tx.wait();
+              const balanceNew = await esInstance[0].functions.balanceOf(accounts[1]);
+              console.log(
+                "\x1b[2m",
+                `        PowerBooster received on ${i}: ${ethers.utils.formatEther(balanceNew.sub(balanceOld))} ES`
+              );
+              assert.ok(balanceNew.gt(balanceOld), 'balance should increase');
+              // console.log(txReceipt);
+            });
+          });
+        }
+
       }
     });
 
