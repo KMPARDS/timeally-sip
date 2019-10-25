@@ -5,29 +5,36 @@ import './SafeMath.sol';
 /**
 
 24 oct 19:38 in last moment im changing panther to cheetah. this might give bugs. pls check
-
-work on add power booster withdrawl
-- compare a different withdrawl with one transaction withdrawl
-- power booster only on commitment
+- completed the operation. done lot of testings too. feeling confident.
 
 remove status from sip struct
 - might be required for nomineeWithdraw
 
 make gas estimation report
+- done: newSIP: 8 ERC20
+- deposit: 3 ERC20
+- withdraw: 2 ERC20
+- 1st powerbooster: 3.5 ERC20
+- 2nd & 3rd poowerbooster 1.8 ERC20
 
 nominee can withdraw benefit after one year do this
+- done
 
 add multisig trustee / appointee
+- done
 
 power booster deduction to be sent to owner address
+- no, added this to fundsDeposit B-)
 
 create get methods for all struct mappings
 
 make option to make plan inactivw
 
 add condition of cap in new users creating SIP.
+- added in deposit too
 
 ensure SIP storage _sip everywhere
+- ensured
 
 check for DAO type vulnerabilities
 **/
@@ -51,7 +58,7 @@ contract TimeAllySIP {
 
   struct SIP {
     uint256 planId;
-    uint256 status; /// @dev 1 => acc period, 2 => withdraw period
+    // uint256 status; /// @dev 1 => acc period, 2 => withdraw period
     uint256 stakingTimestamp;
     uint256 monthlyCommitmentAmount;
     uint256 totalDeposited; /// @dev divided by accumulationPeriodMonths and multiplied by monthlyBenefitFactor and given for every benefit withdrawl
@@ -225,7 +232,7 @@ contract TimeAllySIP {
 
     sips[msg.sender].push(SIP({
       planId: _planId,
-      status: 1,
+      // status: 1,
       stakingTimestamp: now,
       monthlyCommitmentAmount: _monthlyCommitmentAmount,
       totalDeposited: _monthlyCommitmentAmount,
