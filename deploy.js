@@ -43,6 +43,26 @@ const deployFile = async jsonFileName => {
 
   await contractInstance.deployTransaction.wait();
   console.log(`Contract is deployed at ${contractInstance.address}\n`);
+
+  console.log('Creating a sip plan');
+  const args = {
+    minimumMonthlyCommitmentAmount: ethers.utils.parseEther('500'),
+    accumulationPeriodMonths: 12,
+    benefitPeriodYears: 9,
+    gracePeriodSeconds: 864000, /// 10 days
+    monthlyBenefitFactor: 200,
+    gracePenaltyFactor: 10,
+    defaultPenaltyFactor: 20
+  };
+
+  const tx = await contractInstance.functions.createSIPPlan(
+    ...Object.values(args)
+  );
+  console.log('waiting for confirmation...');
+  await tx.wait();
+  console.log('confirmed!');
+
+  /// after this addFunds should also be done, else the require statement of fund cap fails.
 };
 
 if(process.argv[2] === 'deployall') {
