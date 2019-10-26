@@ -353,7 +353,7 @@ describe('TimeAllySIP Contract Self', () => {
               gasConsumed += gasUsed;
               console.log('gasUsed', gasUsed.toNumber());
               const tx = await timeallySIPInstance[1].functions.monthlyDeposit(
-                accounts[1], 0, actualDepositAmountBN, monthId, true
+                accounts[1], 0, actualDepositAmountBN, monthId, false
               );
               const txReceipt = await tx.wait();
               const log = txReceipt.logs[1];

@@ -295,22 +295,17 @@ contract TimeAllySIP {
     emit FundsWithdrawn(_withdrawlAmount);
   }
 
+  /// @notice this function is used to add ES as prepaid for SIP
+  /// @dev ERC20 approve needs to be done
+  /// @param _amount: ES to deposit
   function addToPrepaid(uint256 _amount) public {
     require(token.transferFrom(msg.sender, address(this), _amount));
     prepaidES[msg.sender] = prepaidES[msg.sender].add(_amount);
   }
 
-  function sendPrepaidES(
-    address[] memory _addresses,
-    uint256 _amountToEach
-  ) public {
-    uint256 _totalAmount = _amountToEach.mul(_addresses.length);
-    prepaidES[msg.sender] = prepaidES[msg.sender].sub(_totalAmount);
-    for(uint256 i = 0; i < _addresses.length; i++) {
-      prepaidES[_addresses[i]] = prepaidES[_addresses[i]].add(_amountToEach);
-    }
-  }
-
+  /// @notice this function is used to send ES as prepaid for SIP
+  /// @param _addresses: address array to send prepaid ES for SIP
+  /// @param _amounts: prepaid ES for SIP amounts to send to corresponding addresses
   function sendPrepaidESDifferent(
     address[] memory _addresses,
     uint256[] memory _amounts
