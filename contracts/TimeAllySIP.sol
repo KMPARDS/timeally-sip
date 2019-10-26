@@ -61,6 +61,14 @@ IMP: add monthly amount in struct and give returns in yearly sequence
 IMP: getDepositStatus bug: in second else if condition. staker can deposit in advance.
 - done
 
+New ideas:
+- if selected a standard amount of commit ment:
+  - 100 ES : 16%
+  - 500 ES : 18%
+  - 1,000 ES : 20%
+  - 10,000 ES : 22%
+  - 1,00,000 ES : 24%
+
 **/
 
 /// @title TimeAlly Super Goal Achiever Plan (TSGAP)
@@ -117,6 +125,9 @@ contract TimeAllySIP {
 
   /// @notice allocating storage for multiple sips of multiple users
   mapping(address => SIP[]) public sips;
+
+  /// @notice charge is ES amount given as rewards that can be used for SIP in this contract.
+  mapping(address => uint256) public prepaidES;
 
   /// @notice event schema for monitoring funds added by donors
   event FundsDeposited (
@@ -284,14 +295,42 @@ contract TimeAllySIP {
     emit FundsWithdrawn(_withdrawlAmount);
   }
 
+  function addToPrepaid(uint256 _amount) public {
+    require(token.transferFrom(msg.sender, address(this), _amount));
+    prepaidES[msg.sender] = prepaidES[msg.sender].add(_amount);
+  }
+
+  function sendPrepaidES(
+    address[] memory _addresses,
+    uint256 _amountToEach
+  ) public {
+    uint256 _totalAmount = _amountToEach.mul(_addresses.length);
+    prepaidES[msg.sender] = prepaidES[msg.sender].sub(_totalAmount);
+    for(uint256 i = 0; i < _addresses.length; i++) {
+      prepaidES[_addresses[i]] = prepaidES[_addresses[i]].add(_amountToEach);
+    }
+  }
+
+  function sendPrepaidESDifferent(
+    address[] memory _addresses,
+    uint256[] memory _amounts
+  ) public {
+    for(uint256 i = 0; i < _addresses.length; i++) {
+      prepaidES[msg.sender] = prepaidES[msg.sender].sub(_amounts[i]);
+      prepaidES[_addresses[i]] = prepaidES[_addresses[i]].add(_amounts[i]);
+    }
+  }
+
   /// @notice this function is used to initiate a new SIP along with first deposit
   /// @dev ERC20 approve is required to be done for this contract earlier, also
   ///  fundsDeposit should be enough otherwise contract will not accept
   /// @param _planId: choose a SIP plan
   /// @param _monthlyCommitmentAmount: needs to be more than minimum specified in plan.
+  /// @param _usePrepaidES: should prepaidES be used.
   function newSIP(
     uint256 _planId,
-    uint256 _monthlyCommitmentAmount
+    uint256 _monthlyCommitmentAmount,
+    bool _usePrepaidES
   ) public {
     /// @notice check if sip plan selected is active
     require(
@@ -317,8 +356,15 @@ contract TimeAllySIP {
       , 'enough funds for benefits should be there in contract'
     );
 
-    /// @notice begin sip process by transfering first month tokens from staker to contract
-    require(token.transferFrom(msg.sender, address(this), _monthlyCommitmentAmount));
+    /// @notice if staker wants to use charge then use that else take from wallet
+    if(_usePrepaidES) {
+      /// @notice subtracting prepaidES from staker
+      prepaidES[msg.sender] = prepaidES[msg.sender].sub(_monthlyCommitmentAmount);
+    } else {
+      /// @notice begin sip process by transfering first month tokens from staker to contract
+      require(token.transferFrom(msg.sender, address(this), _monthlyCommitmentAmount));
+    }
+
 
     /// @notice saving sip details to blockchain storage
     sips[msg.sender].push(SIP({
@@ -370,11 +416,13 @@ contract TimeAllySIP {
   /// @param _sipId: id of SIP in staker address portfolio
   /// @param _depositAmount: amount to deposit,
   /// @param _monthId: specify the month to deposit
+  /// @param _usePrepaidES: should prepaidES be used.
   function monthlyDeposit(
     address _stakerAddress,
     uint256 _sipId,
     uint256 _depositAmount,
-    uint256 _monthId
+    uint256 _monthId,
+    bool _usePrepaidES
   ) public meOrNominee(_stakerAddress, _sipId) {
     SIP storage _sip = sips[_stakerAddress][_sipId];
     require(
@@ -404,8 +452,14 @@ contract TimeAllySIP {
     uint256 _depositStatus = getDepositStatus(_stakerAddress, _sipId, _monthId);
     require(_depositStatus > 0, 'grace period elapsed or too early');
 
-    /// @notice transfering staker tokens to SIP contract
-    require(token.transferFrom(msg.sender, address(this), _depositAmount));
+    /// @notice if staker wants to use charge then use that else take from wallet
+    if(_usePrepaidES) {
+      /// @notice subtracting prepaidES from staker
+      prepaidES[msg.sender] = prepaidES[msg.sender].sub(_depositAmount);
+    } else {
+      /// @notice transfering staker tokens to SIP contract
+      require(token.transferFrom(msg.sender, address(this), _depositAmount));
+    }
 
     /// @notice updating deposit status
     _sip.depositStatus[_monthId] = _depositStatus;

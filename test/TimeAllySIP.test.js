@@ -262,7 +262,7 @@ describe('TimeAllySIP Contract Self', () => {
         );
 
         try {
-          const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('400'));
+          const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('400'), false);
           await tx.wait();
           assert(false, 'amount less than 500 ES should throw error');
         } catch (error) {
@@ -272,9 +272,9 @@ describe('TimeAllySIP Contract Self', () => {
 
       it('account 1 tries to create an SIP of 500 ES monthly commitment', async() => {
         const beforeBalanceOf1 = await esInstance[0].balanceOf(accounts[1]);
-        const gasUsed = await timeallySIPInstance[1].estimate.newSIP(0, ethers.utils.parseEther('500'));
+        const gasUsed = await timeallySIPInstance[1].estimate.newSIP(0, ethers.utils.parseEther('500'), false);
         console.log('gasUsed', gasUsed.toNumber());
-        const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('500'));
+        const tx = await timeallySIPInstance[1].functions.newSIP(0, ethers.utils.parseEther('500'), false);
         await tx.wait();
 
         const afterBalanceOf1 = await esInstance[0].balanceOf(accounts[1]);
@@ -348,12 +348,12 @@ describe('TimeAllySIP Contract Self', () => {
               );
               const actualDepositAmountBN = ethers.utils.parseEther(amountInES);
               const gasUsed = await timeallySIPInstance[1].estimate.monthlyDeposit(
-                accounts[1], 0, actualDepositAmountBN, monthId
+                accounts[1], 0, actualDepositAmountBN, monthId, false
               );
               gasConsumed += gasUsed;
               console.log('gasUsed', gasUsed.toNumber());
               const tx = await timeallySIPInstance[1].functions.monthlyDeposit(
-                accounts[1], 0, actualDepositAmountBN, monthId
+                accounts[1], 0, actualDepositAmountBN, monthId, true
               );
               const txReceipt = await tx.wait();
               const log = txReceipt.logs[1];
