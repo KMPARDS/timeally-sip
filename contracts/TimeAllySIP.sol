@@ -98,7 +98,7 @@ contract TimeAllySIP {
     uint256 numberOfAppointees;
     uint256 appointeeVotes;
     mapping(uint256 => uint256) depositStatus; /// @dev 2 => ontime, 1 => grace, 0 => defaulted / not yet
-    // mapping(uint256 => uint256) monthlyDepositAmount;
+    mapping(uint256 => uint256) monthlyBenefitAmount;
     mapping(address => bool) nominees;
     mapping(address => bool) appointees;
   }
@@ -340,9 +340,11 @@ contract TimeAllySIP {
     );
 
     /// @notice calculate benefits to be given during benefit period due to this deposit
-    uint256 _benefitsToBeGiven = _monthlyCommitmentAmount
+    uint256 _singleMonthBenefit = _monthlyCommitmentAmount
       .mul(sipPlans[ _planId ].monthlyBenefitFactor)
-      .div(1000)
+      .div(1000);
+
+    uint256 _benefitsToBeGiven = _singleMonthBenefit
       .mul(sipPlans[ _planId ].benefitPeriodYears);
 
     /// @notice ensure if enough funds are already present in fundsDeposit
@@ -378,7 +380,7 @@ contract TimeAllySIP {
 
     /// @dev marking month 1 as paid on time
     sips[msg.sender][_sipId].depositStatus[1] = 2;
-    // sips[msg.sender][_sipId].monthlyDepositAmount[1] = _monthlyCommitmentAmount;
+    sips[msg.sender][_sipId].monthlyBenefitAmount[1] = _singleMonthBenefit;
 
     /// @notice incrementing pending benefits
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
@@ -432,9 +434,11 @@ contract TimeAllySIP {
     );
 
     /// @notice calculating benefits to be given in future because of this deposit
-    uint256 _benefitsToBeGiven = _depositAmount
+    uint256 _singleMonthBenefit = _depositAmount
       .mul(sipPlans[ _sip.planId ].monthlyBenefitFactor)
-      .div(1000)
+      .div(1000);
+
+    uint256 _benefitsToBeGiven = _singleMonthBenefit
       .mul(sipPlans[ _sip.planId ].benefitPeriodYears);
 
     /// @notice checking if enough unallocated funds are available
@@ -458,7 +462,7 @@ contract TimeAllySIP {
 
     /// @notice updating deposit status
     _sip.depositStatus[_monthId] = _depositStatus;
-    // _sip.monthlyDepositAmount[_monthId] = _depositAmount;
+    _sip.monthlyBenefitAmount[_monthId] = _singleMonthBenefit;
 
     /// @notice adding to total deposit in SIP
     _sip.totalDeposited = _sip.totalDeposited.add(_depositAmount);
@@ -476,18 +480,18 @@ contract TimeAllySIP {
   /// @dev withdraw can be done by any nominee of this SIP.
   /// @param _stakerAddress: address of initiater of this SIP.
   /// @param _sipId: id of SIP in staker address portfolio.
-  /// @param _withdrawlmonthId: withdraw month id starts from 1 upto as per plan.
+  /// @param _withdrawlMonthId: withdraw month id starts from 1 upto as per plan.
   function withdrawBenefit(
     address _stakerAddress,
     uint256 _sipId,
-    uint256 _withdrawlmonthId
+    uint256 _withdrawlMonthId
   ) public meOrNominee(_stakerAddress, _sipId) {
 
     /// @notice require statements are in this function getPendingWithdrawlAmount
     uint256 _withdrawlAmount = getPendingWithdrawlAmount(
       _stakerAddress,
       _sipId,
-      _withdrawlmonthId,
+      _withdrawlMonthId,
       msg.sender != _stakerAddress /// @dev _isNomineeWithdrawing
     );
 
@@ -495,7 +499,7 @@ contract TimeAllySIP {
 
     /// @notice marking that user has withdrawn upto _withdrawlmonthId month
     uint256 _lastWithdrawlMonthId = _sip.lastWithdrawlMonthId;
-    _sip.lastWithdrawlMonthId = _withdrawlmonthId;
+    _sip.lastWithdrawlMonthId = _withdrawlMonthId;
 
     /// @notice updating pending benefits
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.sub(_withdrawlAmount);
@@ -511,7 +515,7 @@ contract TimeAllySIP {
       _stakerAddress,
       _sipId,
       _lastWithdrawlMonthId + 1,
-      _withdrawlmonthId,
+      _withdrawlMonthId,
       _withdrawlAmount,
       msg.sender
     );
@@ -768,17 +772,24 @@ contract TimeAllySIP {
     );
 
     /// @notice calculate average deposit
-    uint256 _averageMonthlyDeposit = _sip.totalDeposited
-      .div(sipPlans[ _sip.planId ].accumulationPeriodMonths);
+    uint256 _benefitToGive;
+    for(uint256 _i = _sip.lastWithdrawlMonthId + 1; _i <= _withdrawlMonthId; _i++) {
+      uint256 _modulus = _i%sipPlans[ _sip.planId ].accumulationPeriodMonths;
+      if(_modulus == 0) _modulus = sipPlans[ _sip.planId ].accumulationPeriodMonths;
+      _benefitToGive = _benefitToGive.add(
+        _sip.monthlyBenefitAmount[_modulus]
+      );
+    }
 
-
-    uint256 _singleMonthBenefit = _averageMonthlyDeposit
-      .mul(sipPlans[ _sip.planId ].monthlyBenefitFactor)
-      .div(1000);
-    uint256 _benefitToGive = _singleMonthBenefit.mul(
-      _withdrawlMonthId.sub(_sip.lastWithdrawlMonthId)
-    );
     return _benefitToGive;
+  }
+
+  function viewMonthlyBenefitAmount(
+    address _stakerAddress,
+    uint256 _sipId,
+    uint256 _depositMonthId
+  ) public view returns (uint256) {
+    return sips[_stakerAddress][_sipId].monthlyBenefitAmount[_depositMonthId];
   }
 
   /// @notice this function is used to view nomination

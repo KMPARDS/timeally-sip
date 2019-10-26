@@ -56,17 +56,17 @@ const safeDeposit = (seconds, add = 0) => {
 const depositTestCases = [
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '500',
+    '600',
     2
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '500',
+    '700',
     3
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '500',
+    '900',
     4
   ],
   [
@@ -209,8 +209,8 @@ describe('TimeAllySIP Contract Self', () => {
       );
     });
 
-    it('adds 10000 ES to funds', async() => {
-      const funds = ethers.utils.parseEther('10000');
+    it('adds 30000 ES to funds', async() => {
+      const funds = ethers.utils.parseEther('30000');
       const tx1 = await esInstance[0].functions.approve(timeallySIPInstance[0].address, funds);
       await tx1.wait();
 
@@ -368,7 +368,11 @@ describe('TimeAllySIP Contract Self', () => {
                 `        yearly benefit queued: ${ethers.utils.formatEther(yearlyBenefit)}`
               );
               for(i = 0; i <= 16; i++) {
-                console.log("\x1b[2m",i, String(await timeallySIPInstance[1].functions.getDepositDoneStatus(accounts[1], 0, i)));
+                console.log(
+                  "\x1b[2m",
+                  i,
+                  String(await timeallySIPInstance[1].functions.getDepositDoneStatus(accounts[1], 0, i)),
+                  ethers.utils.formatEther(await timeallySIPInstance[1].functions.viewMonthlyBenefitAmount(accounts[1], 0, i)));
               }
             } catch (error) {
               console.log(error.message);
