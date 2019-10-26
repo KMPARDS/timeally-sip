@@ -225,6 +225,37 @@ describe('TimeAllySIP Contract Self', () => {
 
   describe('TimeAllySIP Functionality', async() => {
 
+    describe('prepaidES deposit', async() => {
+      it('deposit prepaid ES', async() => {
+        const depositPrepaid = ethers.utils.parseEther('10000');
+        const prepaidEarlier = await timeallySIPInstance[0].functions.prepaidES(accounts[0]);
+
+        const tx = await esInstance[0].functions.approve(timeallySIPInstance[0].address, depositPrepaid);
+        await tx.wait();
+
+        const tx2 = await timeallySIPInstance[0].functions.addToPrepaid(depositPrepaid);
+        await tx2.wait();
+
+        const prepaidLater = await timeallySIPInstance[0].functions.prepaidES(accounts[0]);
+
+        assert.ok(prepaidLater.sub(prepaidEarlier).eq(depositPrepaid), 'prepaid should be deposited');
+      });
+
+      it('transfer prepaid ES', async() => {
+        const prepaidEarlier = await timeallySIPInstance[0].functions.prepaidES(accounts[1]);
+
+        const tx = await timeallySIPInstance[0].functions.sendPrepaidESDifferent(
+          [accounts[1], accounts[2]],
+          [ethers.utils.parseEther('9900'), ethers.utils.parseEther('100')]
+        );
+        await tx.wait();
+
+        const prepaidLater = await timeallySIPInstance[0].functions.prepaidES(accounts[1]);
+
+        assert.ok(prepaidLater.gt(prepaidEarlier), 'prepaid should be deposited');
+      });
+    });
+
     describe('New TimeAlly SIP', async() => {
       it('deployer sends 10,000 ES to account 1', async() => {
         const tx = await esInstance[0].functions.transfer(
