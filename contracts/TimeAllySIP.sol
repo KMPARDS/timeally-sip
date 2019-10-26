@@ -508,7 +508,9 @@ contract TimeAllySIP {
     fundsDeposit = fundsDeposit.sub(_withdrawlAmount);
 
     /// @notice transfering tokens to the user wallet address
-    token.transfer(msg.sender, _withdrawlAmount);
+    if(_withdrawlAmount > 0) {
+      token.transfer(msg.sender, _withdrawlAmount);
+    }
 
     /// @notice emit that benefit withdrawl is done
     emit BenefitWithdrawl(
