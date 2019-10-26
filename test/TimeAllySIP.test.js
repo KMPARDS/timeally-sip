@@ -56,7 +56,7 @@ const safeDeposit = (seconds, add = 0) => {
 const depositTestCases = [
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '1000',
+    '500',
     2
   ],
   [
@@ -66,7 +66,7 @@ const depositTestCases = [
   ],
   [
     safeDeposit(EARTH_SECONDS_IN_MONTH),
-    '5000',
+    '500',
     4
   ],
   [
@@ -399,6 +399,19 @@ describe('TimeAllySIP Contract Self', () => {
       });
     });
 
+    // describe('TimeAllySIP excess funds withdrawl', async() => {
+    //   it('Owner withdraws excess funds', async() => {
+    //     const balanceOwnerEarlier = await esInstance[0].functions.balanceOf(accounts[0]);
+    //     // const pendingBenefitAmountOfAllStakers = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
+    //     const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
+    //     const tx = await timeallySIPInstance[0].functions.withdrawFunds(fundsDeposit.sub(fundsDeposit));
+    //     await tx.wait();
+    //     const balanceOwnerAfter = await esInstance[0].functions.balanceOf(accounts[0]);
+    //     console.log('amount withdrawn', ethers.utils.formatEther(balanceOwnerAfter.gt(balanceOwnerEarlier)));
+    //     assert.ok(balanceOwnerAfter.gt(balanceOwnerEarlier), 'balance of owner should increase');
+    //   });
+    // });
+
     describe('TimeAlly SIP Withdrawls', async() => {
       it('checks if enough funds', async() => {
         const pendingBenefit = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
@@ -481,5 +494,22 @@ describe('TimeAllySIP Contract Self', () => {
       }
     });
 
+    describe('TimeAllySIP excess funds withdrawl', async() => {
+      it('Owner withdraws excess funds', async() => {
+        const balanceOwnerEarlier = await esInstance[0].functions.balanceOf(accounts[0]);
+        const pendingBenefitAmountOfAllStakers = await timeallySIPInstance[0].functions.pendingBenefitAmountOfAllStakers();
+        const fundsDeposit = await timeallySIPInstance[0].functions.fundsDeposit();
+        console.log('pendingBenefitAmountOfAllStakers', ethers.utils.formatEther(pendingBenefitAmountOfAllStakers));
+        console.log('fundsDeposit', ethers.utils.formatEther(fundsDeposit));
+
+        const withdrawAmount = fundsDeposit.sub(pendingBenefitAmountOfAllStakers)//.sub(ethers.utils.parseEther('1'));
+        console.log('withdrawing', ethers.utils.formatEther(withdrawAmount));
+        const tx = await timeallySIPInstance[0].functions.withdrawFunds(withdrawAmount);
+        await tx.wait();
+        const balanceOwnerAfter = await esInstance[0].functions.balanceOf(accounts[0]);
+        console.log('amount withdrawn', ethers.utils.formatEther(balanceOwnerAfter.sub(balanceOwnerEarlier)));
+        assert.ok(balanceOwnerAfter.gt(balanceOwnerEarlier), 'balance of owner should increase');
+      });
+    });
   });
 });

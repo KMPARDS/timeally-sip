@@ -10,6 +10,7 @@ import './SafeMath.sol';
 remove status from sip struct
 - might be required for nomineeWithdraw
 - removed it
+- done
 
 make gas estimation report
 - done: newSIP: 8 ERC20
@@ -17,6 +18,7 @@ make gas estimation report
 - withdraw: 2 ERC20
 - 1st powerbooster: 3.5 ERC20
 - 2nd & 3rd poowerbooster 1.8 ERC20
+- done
 
 nominee can withdraw benefit after one year do this
 - done
@@ -26,25 +28,38 @@ add multisig trustee / appointee
 
 power booster deduction to be sent to owner address
 - no, added this to fundsDeposit B-)
+- done, its ok
 
 create get methods for all struct mappings
+- done
 
-make option to make plan inactivw
+IMP: make option to make plan inactivw
+- done
 
 add condition of cap in new users creating SIP.
 - added in deposit too
+- done
 
 ensure SIP storage _sip everywhere
 - ensured
+- done
 
 check for DAO type vulnerabilities
 
-check appointee cases:
+IMP: check appointee cases:
 // check all four cases in mocha
 // false -> true
 // true -> true
 // true -> false
 // false -> false
+
+IMP: create function to switch off the sip plan
+- done
+
+IMP: add monthly amount in struct and give returns in yearly sequence
+
+IMP: getDepositStatus bug: in second else if condition. staker can deposit in advance.
+- done
 
 **/
 
@@ -69,12 +84,13 @@ contract TimeAllySIP {
     uint256 planId;
     uint256 stakingTimestamp;
     uint256 monthlyCommitmentAmount;
-    uint256 totalDeposited; /// @dev divided by accumulationPeriodMonths and multiplied by monthlyBenefitFactor and given for every benefit withdrawl
+    uint256 totalDeposited;
     uint256 lastWithdrawlMonthId;
     uint256 powerBoosterWithdrawls;
     uint256 numberOfAppointees;
     uint256 appointeeVotes;
     mapping(uint256 => uint256) depositStatus; /// @dev 2 => ontime, 1 => grace, 0 => defaulted / not yet
+    // mapping(uint256 => uint256) monthlyDepositAmount;
     mapping(address => bool) nominees;
     mapping(address => bool) appointees;
   }
@@ -85,34 +101,41 @@ contract TimeAllySIP {
   /// @dev 1 Year = 365.242 days for taking care of leap years
   uint256 public EARTH_SECONDS_IN_MONTH = 2629744;
 
-  /// @dev whenever a deposit is done by user, benefit amount (to be paid
+  /// @notice whenever a deposit is done by user, benefit amount (to be paid
   /// in due plan time) will be already added to this. and in case of withdrawl,
   /// it is subtracted from this.
   uint256 public pendingBenefitAmountOfAllStakers;
 
-  /// @dev deposited by Era Swap Donors. It is given as benefits to  ES stakers.
+  /// @notice deposited by Era Swap Donors. It is given as benefits to  ES stakers.
   /// on every withdrawl this deposit is reduced, and on some point of time
   /// if enough fundsDeposit is not available to assure staker benefit,
   /// contract will allow staker to deposit
   uint256 public fundsDeposit;
 
+  /// @notice allocating storage for multiple sip plans
   SIPPlan[] public sipPlans;
+
+  /// @notice allocating storage for multiple sips of multiple users
   mapping(address => SIP[]) public sips;
 
+  /// @notice event schema for monitoring funds added by donors
   event FundsDeposited (
     uint256 _depositAmount
   );
 
+  /// @notice event schema for monitoring unallocated fund withdrawn by owner
   event FundsWithdrawn (
     uint256 _withdrawlAmount
   );
 
+  /// @notice event schema for monitoring new sips by stakers
   event NewSIP (
     address indexed _staker,
     uint256 _sipId,
     uint256 _monthlyCommitmentAmount
   );
 
+  /// @notice event schema for monitoring deposits made by stakers to sips
   event NewDeposit (
     address indexed _staker,
     uint256 indexed _sipId,
@@ -122,6 +145,7 @@ contract TimeAllySIP {
     address _depositedBy
   );
 
+  /// @notice event schema for monitoring sip benefit withdrawn by stakers
   event BenefitWithdrawl (
     address indexed _staker,
     uint256 indexed _sipId,
@@ -131,6 +155,7 @@ contract TimeAllySIP {
     address _withdrawnBy
   );
 
+  /// @notice event schema for monitoring power booster withdrawn by stakers
   event PowerBoosterWithdrawl (
     address indexed _staker,
     uint256 indexed _sipId,
@@ -139,6 +164,7 @@ contract TimeAllySIP {
     address _withdrawnBy
   );
 
+  /// @notice event schema for monitoring power booster withdrawn by stakers
   event NomineeUpdated (
     address indexed _staker,
     uint256 indexed _sipId,
@@ -146,6 +172,7 @@ contract TimeAllySIP {
     bool _nomineeStatus
   );
 
+  /// @notice event schema for monitoring power booster withdrawls by stakers
   event AppointeeUpdated (
     address indexed _staker,
     uint256 indexed _sipId,
@@ -153,21 +180,24 @@ contract TimeAllySIP {
     bool _appointeeStatus
   );
 
+  /// @notice event schema for monitoring power booster withdrawls by stakers
   event AppointeeVoted (
     address indexed _staker,
     uint256 indexed _sipId,
     address indexed _appointeeAddress
   );
 
-  /// @dev restricting access to some functionalities to admin
+  /// @notice restricting access to some functionalities to owner
   modifier onlyOwner() {
     require(msg.sender == owner, 'only deployer can call');
     _;
   }
 
-  /// @dev restricting access of staker's SIP to them and their nominees
+  /// @notice restricting access of staker's SIP to them and their sip nominees
   modifier meOrNominee(address _stakerAddress, uint256 _sipId) {
     SIP storage _sip = sips[_stakerAddress][_sipId];
+
+    /// @notice if transacter is not staker, then transacter should be nominee
     if(msg.sender != _stakerAddress) {
       require(_sip.nominees[msg.sender], 'nomination should be there');
     }
@@ -198,6 +228,8 @@ contract TimeAllySIP {
     uint256 _gracePenaltyFactor,
     uint256 _defaultPenaltyFactor
   ) public onlyOwner {
+
+    /// @notice saving new sip plan details to blockchain storage
     sipPlans.push(SIPPlan({
       isPlanActive: true,
       minimumMonthlyCommitmentAmount: _minimumMonthlyCommitmentAmount,
@@ -210,30 +242,45 @@ contract TimeAllySIP {
     }));
   }
 
+  function updatePlanStatus(uint256 _planId, bool _newStatus) public onlyOwner {
+    sipPlans[_planId].isPlanActive = _newStatus;
+  }
+
   /// @notice this function is used by donors to add funds to fundsDeposit
   /// @dev ERC20 approve is required to be done for this contract earlier
   /// @param _depositAmount: amount in exaES to deposit
   function addFunds(uint256 _depositAmount) public {
+
+    /// @notice transfer tokens from the donor to contract
     require(
       token.transferFrom(msg.sender, address(this), _depositAmount)
       , 'tokens should be transfered'
     );
+
+    /// @notice increment amount in fundsDeposit
     fundsDeposit = fundsDeposit.add(_depositAmount);
 
+    /// @notice emiting event that funds been deposited
     emit FundsDeposited(_depositAmount);
   }
 
   /// @notice this is used by owner to withdraw ES that are not allocated to any SIP
   /// @param _withdrawlAmount: amount in exaES to withdraw
   function withdrawFunds(uint256 _withdrawlAmount) public onlyOwner {
+
+    /// @notice check if withdrawing only unutilized tokens
     require(
       fundsDeposit.sub(pendingBenefitAmountOfAllStakers) >= _withdrawlAmount
       , 'cannot withdraw excess funds'
     );
 
+    /// @notice decrement amount in fundsDeposit
     fundsDeposit = fundsDeposit.sub(_withdrawlAmount);
+
+    /// @notice transfer tokens to withdrawer
     token.transfer(msg.sender, _withdrawlAmount);
 
+    /// @notice emit that funds are withdrawn
     emit FundsWithdrawn(_withdrawlAmount);
   }
 
@@ -246,22 +293,34 @@ contract TimeAllySIP {
     uint256 _planId,
     uint256 _monthlyCommitmentAmount
   ) public {
+    /// @notice check if sip plan selected is active
+    require(
+      sipPlans[_planId].isPlanActive
+      , 'sip plan is not active'
+    );
+
+    /// @notice check if commitment amount is at least minimum
     require(
       _monthlyCommitmentAmount >= sipPlans[_planId].minimumMonthlyCommitmentAmount
       , 'amount should be atleast minimum'
     );
 
+    /// @notice calculate benefits to be given during benefit period due to this deposit
     uint256 _benefitsToBeGiven = _monthlyCommitmentAmount
       .mul(sipPlans[ _planId ].monthlyBenefitFactor)
       .div(1000)
       .mul(sipPlans[ _planId ].benefitPeriodYears);
 
+    /// @notice ensure if enough funds are already present in fundsDeposit
     require(
-      fundsDeposit >= _benefitsToBeGiven
+      fundsDeposit >= _benefitsToBeGiven.add(pendingBenefitAmountOfAllStakers)
       , 'enough funds for benefits should be there in contract'
     );
+
+    /// @notice begin sip process by transfering first month tokens from staker to contract
     require(token.transferFrom(msg.sender, address(this), _monthlyCommitmentAmount));
 
+    /// @notice saving sip details to blockchain storage
     sips[msg.sender].push(SIP({
       planId: _planId,
       stakingTimestamp: now,
@@ -273,22 +332,26 @@ contract TimeAllySIP {
       appointeeVotes: 0
     }));
 
+    /// @notice sipId starts from 0. first sip of user will have id 0, then 1 and so on.
     uint256 _sipId = sips[msg.sender].length - 1;
 
     /// @dev marking month 1 as paid on time
     sips[msg.sender][_sipId].depositStatus[1] = 2;
+    // sips[msg.sender][_sipId].monthlyDepositAmount[1] = _monthlyCommitmentAmount;
 
-    /// @dev incrementing pending benefits
+    /// @notice incrementing pending benefits
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
       _benefitsToBeGiven
     );
 
+    /// @notice emit that new sip is initiated
     emit NewSIP(
       msg.sender,
       sips[msg.sender].length - 1,
       _monthlyCommitmentAmount
     );
 
+    /// @notice emit that first deposit is done
     emit NewDeposit(
       msg.sender,
       _sipId,
@@ -319,41 +382,44 @@ contract TimeAllySIP {
       , 'deposit cannot be less than commitment'
     );
 
-    /// @dev cannot deposit again for a month in which a deposit is already done
+    /// @notice cannot deposit again for a month in which a deposit is already done
     require(
       _sip.depositStatus[_monthId] == 0
       , 'cannot deposit again'
     );
 
-    /// @dev calculating benefits to be given in future because of this deposit
+    /// @notice calculating benefits to be given in future because of this deposit
     uint256 _benefitsToBeGiven = _depositAmount
       .mul(sipPlans[ _sip.planId ].monthlyBenefitFactor)
       .div(1000)
       .mul(sipPlans[ _sip.planId ].benefitPeriodYears);
 
+    /// @notice checking if enough unallocated funds are available
     require(
       fundsDeposit >= _benefitsToBeGiven.add(pendingBenefitAmountOfAllStakers)
       , 'enough funds should be there in SIP'
     );
 
-    /// @dev transfering staker tokens to SIP contract
-    require(token.transferFrom(msg.sender, address(this), _depositAmount));
-
-    /// @dev check if deposit is allowed according to current time
+    /// @notice check if deposit is allowed according to current time
     uint256 _depositStatus = getDepositStatus(_stakerAddress, _sipId, _monthId);
     require(_depositStatus > 0, 'grace period elapsed or too early');
 
-    /// @dev updating deposit status
-    _sip.depositStatus[_monthId] = _depositStatus;
+    /// @notice transfering staker tokens to SIP contract
+    require(token.transferFrom(msg.sender, address(this), _depositAmount));
 
-    /// @dev adding to total deposit in SIP
+    /// @notice updating deposit status
+    _sip.depositStatus[_monthId] = _depositStatus;
+    // _sip.monthlyDepositAmount[_monthId] = _depositAmount;
+
+    /// @notice adding to total deposit in SIP
     _sip.totalDeposited = _sip.totalDeposited.add(_depositAmount);
 
-    /// @dev adding to pending benefits
+    /// @notice adding to pending benefits
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.add(
       _benefitsToBeGiven
     );
 
+    /// @notice emit that first deposit is done
     emit NewDeposit(_stakerAddress, _sipId, _monthId, _depositAmount, _benefitsToBeGiven, msg.sender);
   }
 
@@ -368,7 +434,7 @@ contract TimeAllySIP {
     uint256 _withdrawlmonthId
   ) public meOrNominee(_stakerAddress, _sipId) {
 
-    /// @dev require statements are in this function getPendingWithdrawlAmount
+    /// @notice require statements are in this function getPendingWithdrawlAmount
     uint256 _withdrawlAmount = getPendingWithdrawlAmount(
       _stakerAddress,
       _sipId,
@@ -378,19 +444,20 @@ contract TimeAllySIP {
 
     SIP storage _sip = sips[_stakerAddress][_sipId];
 
-    /// @dev marking that user has withdrawn upto _withdrawlmonthId month
+    /// @notice marking that user has withdrawn upto _withdrawlmonthId month
     uint256 _lastWithdrawlMonthId = _sip.lastWithdrawlMonthId;
     _sip.lastWithdrawlMonthId = _withdrawlmonthId;
 
-    /// @dev updating pending benefits
+    /// @notice updating pending benefits
     pendingBenefitAmountOfAllStakers = pendingBenefitAmountOfAllStakers.sub(_withdrawlAmount);
 
-    /// @dev updating fundsDeposit
+    /// @notice updating fundsDeposit
     fundsDeposit = fundsDeposit.sub(_withdrawlAmount);
 
-    /// @dev transfering tokens to the user wallet address
+    /// @notice transfering tokens to the user wallet address
     token.transfer(msg.sender, _withdrawlAmount);
 
+    /// @notice emit that benefit withdrawl is done
     emit BenefitWithdrawl(
       _stakerAddress,
       _sipId,
@@ -411,58 +478,71 @@ contract TimeAllySIP {
   ) public meOrNominee(_stakerAddress, _sipId) {
     SIP storage _sip = sips[_stakerAddress][_sipId];
 
-    /// @dev limiting only powerbooster withdrawls
-    require(_sip.powerBoosterWithdrawls < 3, 'only 3 power boosters');
+    /// @notice taking the next power booster withdrawl
+    /// @dev not using safemath because this is under safe range
     uint256 _powerBoosterSerial = _sip.powerBoosterWithdrawls + 1;
 
+    /// @notice limiting only 3 powerbooster withdrawls
+    require(_powerBoosterSerial <= 3, 'only 3 power boosters');
+
+    /// @notice calculating allowed time
     /// @dev not using SafeMath because uint256 range is safe
     uint256 _allowedTimestamp = _sip.stakingTimestamp
       + sipPlans[ _sip.planId ].accumulationPeriodMonths * EARTH_SECONDS_IN_MONTH
       + sipPlans[ _sip.planId ].benefitPeriodYears * 12 * EARTH_SECONDS_IN_MONTH * _powerBoosterSerial / 3 - EARTH_SECONDS_IN_MONTH;
 
-    /// @dev opening window for nominee after sometime
+    /// @notice opening window for nominee after sometime
     if(msg.sender != _stakerAddress) {
       if(_sip.appointeeVotes > _sip.numberOfAppointees.div(2)) {
-        /// @dev with concensus of appointees, withdraw is allowed in 6 months
+        /// @notice with concensus of appointees, withdraw is allowed in 6 months
         _allowedTimestamp += EARTH_SECONDS_IN_MONTH * 6;
       } else {
-        /// @dev otherwise a default of 1 year delay in withdrawing benefits
+        /// @notice otherwise a default of 1 year delay in withdrawing benefits
         _allowedTimestamp += EARTH_SECONDS_IN_MONTH * 12;
       }
     }
 
+    /// @notice restricting early withdrawl
     require(now > _allowedTimestamp, 'cannot withdraw early');
 
-    /// @dev marking that power booster is withdrawn
+    /// @notice marking that power booster is withdrawn
     _sip.powerBoosterWithdrawls = _powerBoosterSerial;
 
-    /// @dev calculating power booster amount
+    /// @notice calculating power booster amount
     uint256 _powerBoosterAmount = _sip.totalDeposited.div(3);
 
-    /// @dev penalising power booster amount as per plan if commitment not met as per plan
+    /// @notice penalising power booster amount as per plan if commitment not met as per plan
     if(_powerBoosterSerial == 1) {
       uint256 _totalPenaltyFactor;
       for(uint256 i = 1; i <= sipPlans[ _sip.planId ].accumulationPeriodMonths; i++) {
         if(_sip.depositStatus[i] == 0) {
-          /// @dev for defaulted months
+          /// @notice for defaulted months
           _totalPenaltyFactor += sipPlans[ _sip.planId ].defaultPenaltyFactor;
         } else if(_sip.depositStatus[i] == 1) {
-          /// @dev for grace period months
+          /// @notice for grace period months
           _totalPenaltyFactor += sipPlans[ _sip.planId ].gracePenaltyFactor;
         }
       }
       uint256 _penaltyAmount = _powerBoosterAmount.mul(_totalPenaltyFactor).div(1000);
 
-      /// @dev allocate penalty amount into fund.
-      fundsDeposit = fundsDeposit.add(_penaltyAmount);
+      /// @notice if there is any penalty then apply the penalty
+      if(_penaltyAmount > 0) {
 
-      /// @dev subtracting penalty form power booster amount
-      _powerBoosterAmount = _powerBoosterAmount.sub(_penaltyAmount);
+        /// @notice allocate penalty amount into fund.
+        fundsDeposit = fundsDeposit.add(_penaltyAmount);
+
+        /// @notice emiting event that funds been deposited
+        emit FundsDeposited(_penaltyAmount);
+
+        /// @notice subtracting penalty form power booster amount
+        _powerBoosterAmount = _powerBoosterAmount.sub(_penaltyAmount);
+      }
     }
 
-    /// @dev transfering tokens to wallet of withdrawer
+    /// @notice transfering tokens to wallet of withdrawer
     token.transfer(msg.sender, _powerBoosterAmount);
 
+    /// @notice emit that power booster withdrawl is done
     emit PowerBoosterWithdrawl(
       _stakerAddress,
       _sipId,
@@ -481,10 +561,11 @@ contract TimeAllySIP {
     address _nomineeAddress,
     bool _newNomineeStatus
   ) public {
-    /// @dev updating nominee status
+
+    /// @notice updating nominee status
     sips[msg.sender][_sipId].nominees[_nomineeAddress] = _newNomineeStatus;
 
-    /// @dev emiting event for UI and other applications
+    /// @notice emiting event for UI and other applications
     emit NomineeUpdated(msg.sender, _sipId, _nomineeAddress, _newNomineeStatus);
   }
 
@@ -499,13 +580,13 @@ contract TimeAllySIP {
   ) public {
     SIP storage _sip = sips[msg.sender][_sipId];
 
-    /// @dev if not an appointee already and _newAppointeeStatus is true, adding appointee
+    /// @notice if not an appointee already and _newAppointeeStatus is true, adding appointee
     if(!_sip.appointees[_appointeeAddress] && _newAppointeeStatus) {
       _sip.numberOfAppointees = _sip.numberOfAppointees.add(1);
       _sip.nominees[_appointeeAddress] = true;
     }
 
-    /// @dev if already an appointee and _newAppointeeStatus is false, removing appointee
+    /// @notice if already an appointee and _newAppointeeStatus is false, removing appointee
     else if(_sip.appointees[_appointeeAddress] && !_newAppointeeStatus) {
       _sip.nominees[_appointeeAddress] = false;
       _sip.numberOfAppointees = _sip.numberOfAppointees.sub(1);
@@ -523,16 +604,19 @@ contract TimeAllySIP {
     uint256 _sipId
   ) public {
     SIP storage _sip = sips[_stakerAddress][_sipId];
+
+    /// @notice checking if appointee has rights to cast a vote
     require(_sip.appointees[msg.sender]
       , 'should be appointee to cast vote'
     );
 
-    /// @dev removing appointee's rights to vote again
+    /// @notice removing appointee's rights to vote again
     _sip.appointees[msg.sender] = false;
 
-    /// @dev adding a vote to SIP
+    /// @notice adding a vote to SIP
     _sip.appointeeVotes = _sip.appointeeVotes.add(1);
 
+    /// @notice emit that appointee has voted
     emit AppointeeVoted(_stakerAddress, _sipId, msg.sender);
   }
 
@@ -562,22 +646,25 @@ contract TimeAllySIP {
   ) public view returns (uint256) {
     SIP storage _sip = sips[_stakerAddress][_sipId];
 
+    /// @notice restricting month between 1 and max accumulation month
     require(
       _monthId >= 1 && _monthId
         <= sipPlans[ _sip.planId ].accumulationPeriodMonths
       , 'invalid deposit month'
     );
 
-    /// @dev not using safemath to save gas, because _monthId is bounded.
+    /// @dev not using safemath because _monthId is bounded.
     uint256 onTimeTimestamp = _sip.stakingTimestamp + EARTH_SECONDS_IN_MONTH * (_monthId - 1);
 
-    /// @dev deposit allowed only one month before deadline
-    if(onTimeTimestamp >= now && now >= onTimeTimestamp - EARTH_SECONDS_IN_MONTH) {
-      return 2; /// @dev means deposit is ontime
+    /// @notice deposit allowed only one month before deadline
+    if(now < onTimeTimestamp - EARTH_SECONDS_IN_MONTH) {
+      return 0; /// @notice means deposit is in advance than allowed
+    } else if(onTimeTimestamp >= now) {
+      return 2; /// @notice means deposit is ontime
     } else if(onTimeTimestamp + sipPlans[ _sip.planId ].gracePeriodSeconds >= now) {
-      return 1; /// @dev means deposit is in grace period
+      return 1; /// @notice means deposit is in grace period
     } else {
-      return 0; /// @dev means even grace period is elapsed or early
+      return 0; /// @notice means even grace period is elapsed
     }
   }
 
@@ -595,7 +682,19 @@ contract TimeAllySIP {
   ) public view returns (uint256) {
     SIP storage _sip = sips[_stakerAddress][_sipId];
 
-    /// @dev calculate allowed time for staker
+    /// @notice check if withdrawl month is in allowed range
+    require(
+      _withdrawlMonthId > 0 && _withdrawlMonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
+      , 'invalid withdraw month'
+    );
+
+    /// @notice check if already withdrawled upto the withdrawl month id
+    require(
+      _withdrawlMonthId > _sip.lastWithdrawlMonthId
+      , 'cannot withdraw again'
+    );
+
+    /// @notice calculate allowed time for staker
     uint256 withdrawlAllowedTimestamp
       = _sip.stakingTimestamp
         + EARTH_SECONDS_IN_MONTH * (
@@ -603,29 +702,27 @@ contract TimeAllySIP {
             + _withdrawlMonthId - 1
         );
 
-    /// @dev if nominee is withdrawing, update the allowed time
+    /// @notice if nominee is withdrawing, update the allowed time
     if(_isNomineeWithdrawing) {
       if(_sip.appointeeVotes > _sip.numberOfAppointees.div(2)) {
+        /// @notice with concensus of appointees, withdraw is allowed in 6 months
         withdrawlAllowedTimestamp += EARTH_SECONDS_IN_MONTH * 6;
       } else {
+        /// @notice otherwise a default of 1 year delay in withdrawing benefits
         withdrawlAllowedTimestamp += EARTH_SECONDS_IN_MONTH * 12;
       }
     }
 
-    require(
-      _withdrawlMonthId > 0 && _withdrawlMonthId <= sipPlans[ _sip.planId ].benefitPeriodYears * 12
-      , 'invalid withdraw month'
-    );
-    require(
-      _withdrawlMonthId > _sip.lastWithdrawlMonthId
-      , 'cannot withdraw again'
-    );
+    /// @notice restricting early withdrawl
     require(now >= withdrawlAllowedTimestamp
       , 'cannot withdraw early'
     );
 
+    /// @notice calculate average deposit
     uint256 _averageMonthlyDeposit = _sip.totalDeposited
       .div(sipPlans[ _sip.planId ].accumulationPeriodMonths);
+
+
     uint256 _singleMonthBenefit = _averageMonthlyDeposit
       .mul(sipPlans[ _sip.planId ].monthlyBenefitFactor)
       .div(1000);
