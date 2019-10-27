@@ -638,12 +638,12 @@ contract TimeAllySIP {
     /// @notice if not an appointee already and _newAppointeeStatus is true, adding appointee
     if(!_sip.appointees[_appointeeAddress] && _newAppointeeStatus) {
       _sip.numberOfAppointees = _sip.numberOfAppointees.add(1);
-      _sip.nominees[_appointeeAddress] = true;
+      _sip.appointees[_appointeeAddress] = true;
     }
 
     /// @notice if already an appointee and _newAppointeeStatus is false, removing appointee
     else if(_sip.appointees[_appointeeAddress] && !_newAppointeeStatus) {
-      _sip.nominees[_appointeeAddress] = false;
+      _sip.appointees[_appointeeAddress] = false;
       _sip.numberOfAppointees = _sip.numberOfAppointees.sub(1);
     }
 

@@ -350,6 +350,82 @@ describe('TimeAllySIP Contract Self', () => {
       });
     });
 
+    describe('Appointee', async() => {
+      it('assign an appointee', async() => {
+        const appointeeBefore = await timeallySIPInstance[1].functions.viewAppointation(accounts[1], 0, accounts[2]);
+
+        console.log('appointeeBefore', appointeeBefore);
+
+        /// @dev activating 2nd account instance
+        timeallySIPInstance[2] = new ethers.Contract(
+          timeallySIPInstance[0].address,
+          timeallySIPJSON.abi,
+          provider.getSigner(accounts[2])
+        );
+
+        assert.ok(!appointeeBefore, 'appointation should not be there before');
+
+        const gasUsed = await timeallySIPInstance[1].estimate.toogleAppointee(0, accounts[2], true);
+        // gasConsumed += gasUsed;
+        console.log('gasUsed', gasUsed.toNumber());
+        const tx = await timeallySIPInstance[1].functions.toogleAppointee(0, accounts[2], true);
+        await tx.wait();
+
+        const appointeeAfter = await timeallySIPInstance[1].functions.viewAppointation(accounts[1], 0, accounts[2]);
+
+        console.log('appointeeAfter', appointeeAfter);
+
+        assert.ok(appointeeAfter, 'appointation should be there now');
+
+        const sip = await timeallySIPInstance[1].functions.sips(accounts[1], 0);
+
+        assert.ok(sip.numberOfAppointees.eq(1), 'number of appointees should be 1')
+      });
+
+      it('appointee votes', async() => {
+        const sipEarly = await timeallySIPInstance[1].functions.sips(accounts[1], 0);
+
+        const tx = await timeallySIPInstance[2].functions.appointeeVote(accounts[1], 0);
+        await tx.wait();
+
+        const sipAfter = await timeallySIPInstance[1].functions.sips(accounts[1], 0);
+
+        assert.ok(sipAfter.appointeeVotes.sub(sipEarly.appointeeVotes).eq(1), 'should be 1');
+        // assert.ok(sipAfter.appointeeVotes.sub(sipEarly.appointeeVotes).eq(1), 'should be 1');
+      });
+
+      // it('remove an appointee', async() => {
+      //   const appointeeBefore = await timeallySIPInstance[1].functions.viewAppointation(accounts[1], 0, accounts[2]);
+      //
+      //   console.log('appointeeBefore', appointeeBefore);
+      //
+      //   /// @dev activating 2nd account instance
+      //   timeallySIPInstance[2] = new ethers.Contract(
+      //     timeallySIPInstance[0].address,
+      //     timeallySIPJSON.abi,
+      //     provider.getSigner(accounts[2])
+      //   );
+      //
+      //   assert.ok(appointeeBefore, 'appointation should be there before');
+      //
+      //   const gasUsed = await timeallySIPInstance[1].estimate.toogleAppointee(0, accounts[2], false);
+      //   // gasConsumed += gasUsed;
+      //   console.log('gasUsed', gasUsed.toNumber());
+      //   const tx = await timeallySIPInstance[1].functions.toogleAppointee(0, accounts[2], false);
+      //   await tx.wait();
+      //
+      //   const appointeeAfter = await timeallySIPInstance[1].functions.viewAppointation(accounts[1], 0, accounts[2]);
+      //
+      //   console.log('appointeeAfter', appointeeAfter);
+      //
+      //   assert.ok(!appointeeAfter, 'appointation not should be there now');
+      //
+      //   const sip = await timeallySIPInstance[1].functions.sips(accounts[1], 0);
+      //
+      //   assert.ok(sip.numberOfAppointees.eq(0), 'number of appointees should be 0')
+      // });
+    });
+
     describe('Continue TimeAlly SIP deposits', async() => {
       depositTestCases.forEach(entry => {
         const [increaseSeconds, amountInES, monthId, fail] = entry;
