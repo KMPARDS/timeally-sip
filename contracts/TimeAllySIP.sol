@@ -253,6 +253,10 @@ contract TimeAllySIP {
     }));
   }
 
+  /// @notice this function is used by owner to disable or re-enable a sip plan
+  /// @dev sips already initiated by a plan will continue only new will be restricted
+  /// @param _planId: select a plan to make it inactive
+  /// @param _newStatus: true or false. 
   function updatePlanStatus(uint256 _planId, bool _newStatus) public onlyOwner {
     sipPlans[_planId].isPlanActive = _newStatus;
   }
