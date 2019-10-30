@@ -44,23 +44,105 @@ const deployFile = async jsonFileName => {
   await contractInstance.deployTransaction.wait();
   console.log(`Contract is deployed at ${contractInstance.address}\n`);
 
-  console.log('Creating a sip plan');
-  const args = {
-    minimumMonthlyCommitmentAmount: ethers.utils.parseEther('500'),
-    accumulationPeriodMonths: 12,
-    benefitPeriodYears: 9,
-    gracePeriodSeconds: 864000, /// 10 days
-    monthlyBenefitFactor: 200,
-    gracePenaltyFactor: 10,
-    defaultPenaltyFactor: 20
-  };
+  await (async() => {
+    console.log('Creating a sip plan 100');
+    const args = {
+      minimumMonthlyCommitmentAmount: ethers.utils.parseEther('100'),
+      accumulationPeriodMonths: 12,
+      benefitPeriodYears: 9,
+      gracePeriodSeconds: 864000, /// 10 days
+      monthlyBenefitFactor: 160,
+      gracePenaltyFactor: 10,
+      defaultPenaltyFactor: 20
+    };
 
-  const tx = await contractInstance.functions.createSIPPlan(
-    ...Object.values(args)
-  );
-  console.log('waiting for confirmation...');
-  await tx.wait();
-  console.log('confirmed!');
+    const tx = await contractInstance.functions.createSIPPlan(
+      ...Object.values(args)
+    );
+    console.log('waiting for confirmation...');
+    await tx.wait();
+    console.log('confirmed!');
+  })();
+
+  await (async() => {
+    console.log('Creating a sip plan 500');
+    const args = {
+      minimumMonthlyCommitmentAmount: ethers.utils.parseEther('500'),
+      accumulationPeriodMonths: 12,
+      benefitPeriodYears: 9,
+      gracePeriodSeconds: 864000, /// 10 days
+      monthlyBenefitFactor: 180,
+      gracePenaltyFactor: 10,
+      defaultPenaltyFactor: 20
+    };
+
+    const tx = await contractInstance.functions.createSIPPlan(
+      ...Object.values(args)
+    );
+    console.log('waiting for confirmation...');
+    await tx.wait();
+    console.log('confirmed!');
+  })();
+
+  await (async() => {
+    console.log('Creating a sip plan');
+    const args = {
+      minimumMonthlyCommitmentAmount: ethers.utils.parseEther('1000'),
+      accumulationPeriodMonths: 12,
+      benefitPeriodYears: 9,
+      gracePeriodSeconds: 864000, /// 10 days
+      monthlyBenefitFactor: 180,
+      gracePenaltyFactor: 10,
+      defaultPenaltyFactor: 20
+    };
+
+    const tx = await contractInstance.functions.createSIPPlan(
+      ...Object.values(args)
+    );
+    console.log('waiting for confirmation...');
+    await tx.wait();
+    console.log('confirmed!');
+  })();
+
+  await (async() => {
+    console.log('Creating a sip plan');
+    const args = {
+      minimumMonthlyCommitmentAmount: ethers.utils.parseEther('10000'),
+      accumulationPeriodMonths: 12,
+      benefitPeriodYears: 9,
+      gracePeriodSeconds: 864000, /// 10 days
+      monthlyBenefitFactor: 220,
+      gracePenaltyFactor: 10,
+      defaultPenaltyFactor: 20
+    };
+
+    const tx = await contractInstance.functions.createSIPPlan(
+      ...Object.values(args)
+    );
+    console.log('waiting for confirmation...');
+    await tx.wait();
+    console.log('confirmed!');
+  })();
+
+  await (async() => {
+    console.log('Creating a sip plan 100000');
+    const args = {
+      minimumMonthlyCommitmentAmount: ethers.utils.parseEther('100000'),
+      accumulationPeriodMonths: 12,
+      benefitPeriodYears: 9,
+      gracePeriodSeconds: 864000, /// 10 days
+      monthlyBenefitFactor: 240,
+      gracePenaltyFactor: 10,
+      defaultPenaltyFactor: 20
+    };
+
+    const tx = await contractInstance.functions.createSIPPlan(
+      ...Object.values(args)
+    );
+    console.log('waiting for confirmation...');
+    await tx.wait();
+    console.log('confirmed!');
+  })();
 
   /// after this addFunds should also be done, else the require statement of fund cap fails.
 };
