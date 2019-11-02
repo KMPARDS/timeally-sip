@@ -1,6 +1,12 @@
 # TimeAlly SIP / TSGAP (TimeAlly Super Goal Achiever Plan)
 TimeAlly Super Goal Achiever Plan (TSGAP) is Decentralized Smart Contract based Systematic Investment Plan (SIP) that enable to safeguard your interest so that you can make the most of your golden years with financial independence. TSGAP is secured SIP (Systematic Investment Plan) since the future benefits of the Staker are stored safely in Smart Contract on Day 1 of beginning of annuity which is transparent & most secured system driven. The assets will be distributed at different interval time as per the Smart Contract logics. The withdrawal of eligible benefits is in total control of the Staker. The entire staked ES is stored in a trustless smart contract system. This can’t be double spend & moved out for any other purpose as this is completely managed by Blockchain based smart contract. TSGAP Incentivize Stakers behavior for staking regularly in a disciplined way. 
 
+## Steps
+1. Clone the repo `git clone https://github.com/KMPARDS/timeally-sip.git`.
+2. Install dependencies `npm i`.
+3. For running the tests do `npm run test1`.
+4. If you've made local changes to smart contract, then do `node compile.js`.
+
 ## Benefits of TSGAP to Stakers
 - Choose your minimum staking in Era Swap 
 - Leverage Power of Compounding
